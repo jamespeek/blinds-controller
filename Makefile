@@ -36,6 +36,8 @@ firmware-test:
 	/tmp/blinds-rf-profile-tests
 	c++ -std=c++17 -Wall -Wextra -Werror -Itests/fakes tests/test_queue.cpp firmware/queue.cpp -o /tmp/blinds-queue-tests
 	/tmp/blinds-queue-tests
+	c++ -std=c++17 -Wall -Wextra -Werror tests/test_command_validation.cpp -o /tmp/blinds-command-validation-tests
+	/tmp/blinds-command-validation-tests
 
 firmware-monitor:
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) monitor --port $(PORT) --config baudrate=115200

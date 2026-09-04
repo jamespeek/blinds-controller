@@ -3,6 +3,7 @@
 #include "mqtt_io.h"
 #include "queue.h"
 #include "motion.h"
+#include "command_validation.h"
 
 static PubSubClient* mqtt = nullptr;
 static String devId;
@@ -54,26 +55,23 @@ static Zone parseZoneFromTopic(const String& t, uint8_t& blind) {
 
   if (leaf != "set") return Z_UNKNOWN;
 
+  if (!isUnsignedDecimal(blindStr.c_str(), blindStr.length())) return Z_UNKNOWN;
   blind = (uint8_t)blindStr.toInt();
 
   return zoneFromName(zone);
 }
 
-static Action parseAction(const String& payload, int& targetPosOut) {
+static bool parseAction(const String& payload, Action& actionOut, int& targetPosOut) {
   targetPosOut = -1;
-  if (payload == "OPEN") return A_OPEN;
-  if (payload == "CLOSE") return A_CLOSE;
-  if (payload == "STOP") return A_STOP;
+  if (payload == "OPEN") { actionOut = A_OPEN; return true; }
+  if (payload == "CLOSE") { actionOut = A_CLOSE; return true; }
+  if (payload == "STOP") { actionOut = A_STOP; return true; }
 
-  bool isNum = payload.length() > 0;
-  for (int i = 0; i < (int)payload.length(); i++) {
-    if (!isDigit(payload[i])) { isNum = false; break; }
-  }
-  if (isNum) {
+  if (isUnsignedDecimal(payload.c_str(), payload.length())) {
     int v = payload.toInt();
-    if (v >= 0 && v <= 100) { targetPosOut = v; return A_SET_POS; }
+    if (v >= 0 && v <= 100) { targetPosOut = v; actionOut = A_SET_POS; return true; }
   }
-  return A_STOP;
+  return false;
 }
 
 static void callback(char* topicC, byte* payloadB, unsigned int len) {
@@ -102,7 +100,11 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
   if (!ownsZone(z)) return;
 
   int targetPos = -1;
-  Action a = parseAction(payload, targetPos);
+  Action a;
+  if (!parseAction(payload, a, targetPos)) {
+    logLine("[MQTT] Ignoring invalid payload='" + payload + "'");
+    return;
+  }
 
   Cmd c{z, blind, a, targetPos};
   if (!qEnqueue(c)) logLine("[MQTT] Queue FULL - dropped");

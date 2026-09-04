@@ -3,6 +3,7 @@
 #include "http_api.h"
 #include "motion.h"
 #include "queue.h"
+#include "command_validation.h"
 
 static inline void logLine(const String& s) {
   if (DEBUG_LOG) Serial.println(s);
@@ -12,11 +13,11 @@ static Zone parseZoneName(const String& s) {
   return zoneFromName(s);
 }
 
-static Action parseHttpAction(const String& s) {
-  if (s == "up" || s == "open") return A_OPEN;
-  if (s == "down" || s == "close") return A_CLOSE;
-  if (s == "stop") return A_STOP;
-  return A_STOP;
+static bool parseHttpAction(const String& s, Action& action) {
+  if (s == "up" || s == "open") { action = A_OPEN; return true; }
+  if (s == "down" || s == "close") { action = A_CLOSE; return true; }
+  if (s == "stop") { action = A_STOP; return true; }
+  return false;
 }
 
 static void handleRoot(WebServer& server) {
@@ -64,6 +65,10 @@ static void handleApi(WebServer& server) {
   String cmdStr = uri.substring(p2 + 1);
 
   Zone z = parseZoneName(zoneStr);
+  if (!isUnsignedDecimal(blindStr.c_str(), blindStr.length())) {
+    server.send(404, "text/plain", "invalid zone or blind");
+    return;
+  }
   int blind = blindStr.toInt();
 
   const ZoneConfig* config = zoneConfig(z);
@@ -80,10 +85,7 @@ static void handleApi(WebServer& server) {
   c.blind = (uint8_t)blind;
   c.targetPos = -1;
 
-  bool isNum = cmdStr.length() > 0;
-  for (int i = 0; i < (int)cmdStr.length(); i++) {
-    if (!isDigit(cmdStr[i])) { isNum = false; break; }
-  }
+  bool isNum = isUnsignedDecimal(cmdStr.c_str(), cmdStr.length());
 
   if (isNum) {
     int v = cmdStr.toInt();
@@ -95,7 +97,10 @@ static void handleApi(WebServer& server) {
     c.targetPos = v;
     logLine("[HTTP] RX " + uri + " -> SET_POS " + String(v));
   } else {
-    c.action = parseHttpAction(cmdStr);
+    if (!parseHttpAction(cmdStr, c.action)) {
+      server.send(400, "text/plain", "command must be up, down, stop, or a position from 0 to 100");
+      return;
+    }
     logLine("[HTTP] RX " + uri + " -> " + cmdStr);
   }
 
