@@ -5,6 +5,33 @@ Arduino firmware for the ESP32-S2 blind controller. The target board is
 (`esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc`). The currently connected
 device is available at `/dev/cu.usbmodem01`.
 
+## Hardware used
+
+Each controller uses:
+
+- A [DIANN ESP32 S2 Mini V1.0.0](https://www.amazon.com.au/dp/B0DHVBB6P2),
+  based on the ESP32-S2FN4R2 and fitted with 4 MB flash, 2 MB PSRAM, and a
+  USB-C port. Build it as an **ESP32S2 Dev Module**.
+- An [nRF24L01+ PA+LNA 2.4 GHz radio module with SMA antenna and 8-pin
+  breakout adapter](https://www.amazon.com.au/dp/B0CDV8J2WF) for transmitting
+  blind commands.
+- A USB data cable for power, programming, and serial monitoring.
+
+The radio is connected to the ESP32-S2 Mini over SPI as follows:
+
+| Radio signal | ESP32-S2 GPIO | Wire colour |
+| --- | ---: | --- |
+| CE | 9 | Purple |
+| CSN / CS | 11 | Blue |
+| SCK | 12 | Green |
+| MOSI | 18 | Yellow |
+| MISO | 16 | Orange |
+
+The radio module itself requires 3.0–3.6 V (3.3 V recommended). The supplied
+breakout adapter includes a 3.3 V regulator; follow its input-voltage label
+rather than applying 5 V directly to the radio. Connect the ESP32 and radio
+grounds, and check the breakout's pin labels before wiring it.
+
 ## One-time setup
 
 Install the command-line tool, then install the project-pinned board core and
