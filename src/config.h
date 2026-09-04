@@ -83,6 +83,10 @@ static const uint8_t RF_START_REPEAT_COUNT = 2;
 static const uint16_t RF_START_REPEAT_GAP_MS = 200;
 static const uint8_t RF_STOP_CYCLES = 1;
 
+// A command that stopped opposite movement is ignored briefly if it is
+// repeated, preventing an HTTP/MQTT retry from immediately reversing motion.
+static const uint16_t POST_STOP_DEDUP_MS = 1500;
+
 // Set at build time with -DRF_DRY_RUN=1 to exercise timing and logging without
 // writing any packets to the radio. This is safer than using another channel,
 // which would still transmit RF energy.

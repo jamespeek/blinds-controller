@@ -28,4 +28,7 @@ struct BlindRuntime {
   bool openingDir;           // direction used for stop burst
 
   uint32_t lastPubMs;        // ✅ per-blind publish throttling (fix)
+  Action postStopAction;
+  int postStopTargetPos;
+  uint32_t postStopUntilMs;
 };

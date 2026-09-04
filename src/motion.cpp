@@ -5,6 +5,7 @@
 #include "config.h"
 #include "rf24_tx.h"
 #include "mqtt_io.h"
+#include "post_stop_guard.h"
 
 static TravelTime travel[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
 static BlindRuntime runtime[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
@@ -37,6 +38,7 @@ static void initRuntime(BlindRuntime* items) {
     items[i].state = S_OPEN; items[i].position = 50; items[i].startPos = 50; items[i].targetPos = 50;
     items[i].moveStartMs = 0; items[i].moveDurationMs = 0; items[i].moving = false;
     items[i].partialMove = false; items[i].openingDir = false; items[i].lastPubMs = 0;
+    items[i].postStopAction = A_STOP; items[i].postStopTargetPos = -1; items[i].postStopUntilMs = 0;
   }
 }
 
@@ -164,6 +166,12 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
   if (!rt || !tt || mask == 0) return;
   uint32_t now = millis();
 
+  if (isPostStopDuplicate(action, targetPos, rt->postStopAction, rt->postStopTargetPos,
+                          now, rt->postStopUntilMs)) {
+    logLine(String("[MOVE] Ignoring duplicate command after stop zone=") + config->name + " blind=" + blind);
+    return;
+  }
+
   if (rt->moving) {
     bool requestedOpposite = false;
     if (action == A_OPEN) requestedOpposite = rt->state == S_CLOSING;
@@ -173,7 +181,14 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
       if (target <= SETPOS_MIN) target = 0; else if (target >= SETPOS_MAX) target = 100;
       if (target != rt->position) requestedOpposite = (target > rt->position) != (rt->state == S_OPENING);
     }
-    if (requestedOpposite) { logLine(String("[MOVE] Opposite command while moving; stopping zone=") + config->name + " blind=" + blind); startMove(z, blind, A_STOP, 0); return; }
+    if (requestedOpposite) {
+      logLine(String("[MOVE] Opposite command while moving; stopping zone=") + config->name + " blind=" + blind);
+      rt->postStopAction = action;
+      rt->postStopTargetPos = targetPos;
+      rt->postStopUntilMs = now + POST_STOP_DEDUP_MS;
+      startMove(z, blind, A_STOP, 0);
+      return;
+    }
   }
 
   if (action == A_SET_POS) {

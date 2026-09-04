@@ -38,6 +38,8 @@ test:
 	/tmp/blinds-queue-tests
 	c++ -std=c++17 -Wall -Wextra -Werror tests/test_command_validation.cpp -o /tmp/blinds-command-validation-tests
 	/tmp/blinds-command-validation-tests
+	c++ -std=c++17 -Wall -Wextra -Werror -Itests/fakes tests/test_post_stop_guard.cpp -o /tmp/blinds-post-stop-guard-tests
+	/tmp/blinds-post-stop-guard-tests
 
 monitor:
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) monitor --port $(PORT) --config baudrate=115200
