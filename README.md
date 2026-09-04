@@ -163,10 +163,3 @@ The controller treats the live MQTT connection as its service-health check;
 there is no separate ICMP ping. Wi-Fi and MQTT retries begin at two seconds
 and back off to one minute. After five minutes without Wi-Fi or MQTT, it resets
 the Wi-Fi radio; after 30 minutes without recovery, it reboots the controller.
-
-## Credentials
-
-The prior source file stored network and MQTT credentials in plain text. Treat
-those values as exposed: rotate them, then place replacements only in the
-local configuration created from
-[`src/config.local.example.h`](src/config.local.example.h).
