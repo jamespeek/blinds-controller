@@ -9,10 +9,7 @@ static inline void logLine(const String& s) {
 }
 
 static Zone parseZoneName(const String& s) {
-  if (s == "front") return Z_FRONT;
-  if (s == "kitchen") return Z_KITCHEN;
-  if (s == "back") return Z_BACK;
-  return Z_UNKNOWN;
+  return zoneFromName(s);
 }
 
 static Action parseHttpAction(const String& s) {
@@ -29,12 +26,23 @@ static void handleRoot(WebServer& server) {
   msg += "IP: " + WiFi.localIP().toString() + "\n";
   msg += "MAC: " + WiFi.macAddress() + "\n\n";
 
-  if (WiFi.macAddress() == FRONT_ESP_MAC) {
-    msg += "Zone: front\n";
-  } else if (WiFi.macAddress() == BACK_ESP_MAC) {
-    msg += "Zone: back\n";
+  msg += "Controller: ";
+  msg += controllerName();
+  msg += "\n";
+  if (controllerConfigured()) {
+    msg += "Owned zones: ";
+    bool first = true;
+    for (Zone z = 0; z < ZONE_COUNT; z++) {
+      const ZoneConfig* config = zoneConfig(z);
+      if (config && ownsZone(z)) {
+        if (!first) msg += ", ";
+        msg += config->name;
+        first = false;
+      }
+    }
+    msg += "\n";
   } else {
-    msg += "Zone: unknown\n";
+    msg += "RF commands disabled: MAC is not configured\n";
   }
 
   msg += "\nCommand format: /<zone>/<blind>/<cmd-or-pos>\n";
@@ -58,7 +66,8 @@ static void handleApi(WebServer& server) {
   Zone z = parseZoneName(zoneStr);
   int blind = blindStr.toInt();
 
-  if (z == Z_UNKNOWN || blind < 1 || blind > 4) {
+  const ZoneConfig* config = zoneConfig(z);
+  if (!config || blind < 1 || blind > config->blindCount) {
     server.send(404, "text/plain", "invalid zone or blind");
     return;
   }
@@ -66,11 +75,6 @@ static void handleApi(WebServer& server) {
     server.send(403, "text/plain", "zone not owned by this controller");
     return;
   }
-  if (z == Z_KITCHEN && blind != 1) {
-    server.send(404, "text/plain", "kitchen only has blind 1");
-    return;
-  }
-
   Cmd c;
   c.zone = z;
   c.blind = (uint8_t)blind;

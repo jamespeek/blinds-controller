@@ -1,339 +1,192 @@
 #include <WiFi.h>
+#include <cstring>
+
 #include "motion.h"
 #include "config.h"
 #include "rf24_tx.h"
 #include "mqtt_io.h"
 
-static TravelTime travel_front[4];
-static TravelTime travel_kitchen[4];
-static TravelTime travel_back[4];
-
-static BlindRuntime rt_front[4];
-static BlindRuntime rt_kitchen[4];
-static BlindRuntime rt_back[4];
-
-static bool OWN_FRONT = true;
-static bool OWN_KITCHEN = true;
-static bool OWN_BACK = true;
-
+static TravelTime travel[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
+static BlindRuntime runtime[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
+static const ControllerConfig* activeController = nullptr;
 static uint32_t lastRfStartMs = 0;
-static const uint32_t RF_MIN_GAP_MS = 120; // spacing between RF starts (non-blocking)
+static const uint32_t RF_MIN_GAP_MS = 120;
 
-static inline void logLine(const String& s) {
-  if (DEBUG_LOG) Serial.println(s);
+static inline void logLine(const String& s) { if (DEBUG_LOG) Serial.println(s); }
+
+const ZoneConfig* zoneConfig(Zone z) {
+  if (z >= ZONE_COUNT) return nullptr;
+  const ZoneConfig* config = &ZONE_CONFIGS[z];
+  if (!config->name || config->blindCount == 0 || config->blindCount > MAX_BLINDS_PER_ZONE) return nullptr;
+  return config;
 }
 
-static void initRtArray(BlindRuntime* a) {
-  for (int i = 0; i < 4; i++) {
-    a[i].state = S_OPEN;
-    a[i].position = 50;
-    a[i].startPos = 50;
-    a[i].targetPos = 50;
-    a[i].moveStartMs = 0;
-    a[i].moveDurationMs = 0;
-    a[i].moving = false;
-    a[i].partialMove = false;
-    a[i].openingDir = false;
-    a[i].lastPubMs = 0; // ✅ per-blind throttle
+Zone zoneFromName(const String& name) {
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (config && name == config->name) return z;
+  }
+  return Z_UNKNOWN;
+}
+
+const char* controllerName() { return activeController ? activeController->name : "unconfigured"; }
+bool controllerConfigured() { return activeController != nullptr; }
+
+static void initRuntime(BlindRuntime* items) {
+  for (uint8_t i = 0; i < MAX_BLINDS_PER_ZONE; i++) {
+    items[i].state = S_OPEN; items[i].position = 50; items[i].startPos = 50; items[i].targetPos = 50;
+    items[i].moveStartMs = 0; items[i].moveDurationMs = 0; items[i].moving = false;
+    items[i].partialMove = false; items[i].openingDir = false; items[i].lastPubMs = 0;
   }
 }
 
 static BlindRuntime* getRt(Zone z, uint8_t blind) {
-  if (blind < 1 || blind > 4) return nullptr;
-  if (z == Z_FRONT) return &rt_front[blind-1];
-  if (z == Z_KITCHEN) return &rt_kitchen[blind-1];
-  if (z == Z_BACK) return &rt_back[blind-1];
-  return nullptr;
+  const ZoneConfig* config = zoneConfig(z);
+  if (!config || blind < 1 || blind > config->blindCount) return nullptr;
+  return &runtime[z][blind - 1];
 }
 
 static TravelTime* getTravel(Zone z, uint8_t blind) {
-  if (blind < 1 || blind > 4) return nullptr;
-  if (z == Z_FRONT) return &travel_front[blind-1];
-  if (z == Z_KITCHEN) return &travel_kitchen[blind-1];
-  if (z == Z_BACK) return &travel_back[blind-1];
-  return nullptr;
+  const ZoneConfig* config = zoneConfig(z);
+  if (!config || blind < 1 || blind > config->blindCount) return nullptr;
+  return &travel[z][blind - 1];
 }
 
-uint8_t blindToMask(uint8_t blind) {
-  switch (blind) {
-    case 1: return 0x01;
-    case 2: return 0x02;
-    case 3: return 0x04;
-    case 4: return 0x08;
-    default: return 0x00;
-  }
-}
-
-int zoneToRemote(Zone z) {
-  if (z == Z_FRONT) return 1;
-  if (z == Z_KITCHEN) return 2;
-  if (z == Z_BACK) return 3;
-  return -1;
-}
+uint8_t blindToMask(uint8_t blind) { return (blind >= 1 && blind <= MAX_BLINDS_PER_ZONE) ? (1 << (blind - 1)) : 0; }
 
 bool ownsZone(Zone z) {
-  if (z == Z_FRONT) return OWN_FRONT;
-  if (z == Z_KITCHEN) return OWN_KITCHEN;
-  if (z == Z_BACK) return OWN_BACK;
+  const ZoneConfig* config = zoneConfig(z);
+  if (!activeController || !config) return false;
+  for (uint8_t i = 0; i < activeController->zoneCount; i++) {
+    if (activeController->zoneNames[i] && strcmp(activeController->zoneNames[i], config->name) == 0) return true;
+  }
   return false;
 }
 
 void motionInit() {
-  // copy config travel times
-  for (int i=0;i<4;i++) {
-    travel_front[i]   = {(uint16_t)TRAVEL_FRONT[i].open_s,   (uint16_t)TRAVEL_FRONT[i].close_s};
-    travel_kitchen[i] = {(uint16_t)TRAVEL_KITCHEN[i].open_s, (uint16_t)TRAVEL_KITCHEN[i].close_s};
-    travel_back[i]    = {(uint16_t)TRAVEL_BACK[i].open_s,    (uint16_t)TRAVEL_BACK[i].close_s};
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (!config) { Serial.printf("[CONFIG] Invalid zone at index %u\n", z); continue; }
+    for (uint8_t blind = 0; blind < MAX_BLINDS_PER_ZONE; blind++) {
+      travel[z][blind] = { config->travel[blind].open_s, config->travel[blind].close_s };
+    }
+    initRuntime(runtime[z]);
   }
-
-  initRtArray(rt_front);
-  initRtArray(rt_kitchen);
-  initRtArray(rt_back);
 
   String mac = WiFi.macAddress();
-  if (mac == FRONT_ESP_MAC) {
-    OWN_FRONT = true; OWN_KITCHEN = true; OWN_BACK = false;
-  } else if (mac == BACK_ESP_MAC) {
-    OWN_FRONT = false; OWN_KITCHEN = false; OWN_BACK = true;
-  } else {
-    OWN_FRONT = true; OWN_KITCHEN = true; OWN_BACK = true;
+  for (size_t i = 0; i < CONTROLLER_COUNT; i++) {
+    if (CONTROLLER_CONFIGS[i].mac && mac.equalsIgnoreCase(CONTROLLER_CONFIGS[i].mac)) { activeController = &CONTROLLER_CONFIGS[i]; break; }
   }
-
-  logLine("Zone ownership:");
-  logLine(String("  Front:   ") + (OWN_FRONT ? "YES" : "NO"));
-  logLine(String("  Kitchen: ") + (OWN_KITCHEN ? "YES" : "NO"));
-  logLine(String("  Back:    ") + (OWN_BACK ? "YES" : "NO"));
+  if (!activeController) { Serial.println("[CONFIG] Unrecognized controller MAC; RF commands disabled"); return; }
+  Serial.print("[CONFIG] Controller: "); Serial.println(activeController->name);
+  Serial.println("[CONFIG] Owned zones:");
+  for (uint8_t i = 0; i < activeController->zoneCount; i++) { Serial.print("  "); Serial.println(activeController->zoneNames[i]); }
 }
 
-static void publishState(Zone z, uint8_t blind, MoveState s, int pos) {
-  mqttPublishState(z, blind, s, pos);
-}
+static void publishState(Zone z, uint8_t blind, MoveState state, int pos) { mqttPublishState(z, blind, state, pos); }
 
-static void rfSendSpaced(int remote, uint8_t mask, bool open, bool longPress) {
-  uint32_t now = millis();
-
-  uint32_t elapsed = now - lastRfStartMs;
-  if (elapsed < RF_MIN_GAP_MS) {
-    delay(RF_MIN_GAP_MS - elapsed);
-  }
-
+static void rfSendSpaced(const ZoneConfig& config, uint8_t mask, bool open, bool longPress) {
+  uint32_t elapsed = millis() - lastRfStartMs;
+  if (elapsed < RF_MIN_GAP_MS) delay(RF_MIN_GAP_MS - elapsed);
   lastRfStartMs = millis();
- 
-  if (longPress) {
-    rfSendCmd(remote, mask, open, 700);
-    delay(200);
-    rfSendCmd(remote, mask, open, 700);
-  } else {
-    rfSendCmd(remote, mask, open, 500);
-  }
+  if (longPress) { rfSendCmd(config.remoteId, mask, open, 700); delay(200); rfSendCmd(config.remoteId, mask, open, 700); }
+  else rfSendCmd(config.remoteId, mask, open, 500);
 }
 
-void startMove(Zone z, uint8_t blind, Action a, int targetPos) {
-  if (!ownsZone(z)) return;
-  if (z == Z_KITCHEN && blind != 1) return;
-
-  int remote = zoneToRemote(z);
+void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
+  const ZoneConfig* config = zoneConfig(z);
+  if (!config || !ownsZone(z)) return;
   uint8_t mask = blindToMask(blind);
   BlindRuntime* rt = getRt(z, blind);
   TravelTime* tt = getTravel(z, blind);
-  if (!rt || !tt || remote < 0 || mask == 0) return;
-
+  if (!rt || !tt || mask == 0) return;
   uint32_t now = millis();
 
-  // If already moving and user requests the opposite direction,
-  // behave like the remote: first opposite press = STOP only.
   if (rt->moving) {
     bool requestedOpposite = false;
-
-    if (a == A_OPEN) {
-      requestedOpposite = (rt->state == S_CLOSING);   // moving down, got open
-    } else if (a == A_CLOSE) {
-      requestedOpposite = (rt->state == S_OPENING);   // moving up, got close
-    } else if (a == A_SET_POS) {
+    if (action == A_OPEN) requestedOpposite = rt->state == S_CLOSING;
+    else if (action == A_CLOSE) requestedOpposite = rt->state == S_OPENING;
+    else if (action == A_SET_POS) {
       int target = constrain(targetPos, 0, 100);
-
-      // Apply your clamp rule so setpos maps to open/close in the edges
-      if (target <= SETPOS_MIN) target = 0;
-      else if (target >= SETPOS_MAX) target = 100;
-
-      // If target implies opposite direction relative to current *movement*
-      if (target != rt->position) {
-        bool wantOpen = (target > rt->position);
-        bool movingOpen = (rt->state == S_OPENING);
-        requestedOpposite = (wantOpen != movingOpen);
-      }
+      if (target <= SETPOS_MIN) target = 0; else if (target >= SETPOS_MAX) target = 100;
+      if (target != rt->position) requestedOpposite = (target > rt->position) != (rt->state == S_OPENING);
     }
-
-    if (requestedOpposite) {
-      logLine(String("[MOVE] Opposite cmd while moving -> STOP only zone=") +
-              ZONE_NAMES[z] + " blind=" + blind);
-
-      // Call STOP branch (updates position estimate, sends opposite burst, publishes state)
-      startMove(z, blind, A_STOP, 0);
-      return;
-    }
+    if (requestedOpposite) { logLine(String("[MOVE] Opposite command while moving; stopping zone=") + config->name + " blind=" + blind); startMove(z, blind, A_STOP, 0); return; }
   }
 
-  // SET_POS clamp rule
-  if (a == A_SET_POS) {
+  if (action == A_SET_POS) {
     int target = constrain(targetPos, 0, 100);
-
-    if (target <= SETPOS_MIN) { a = A_CLOSE; target = 0; }
-    else if (target >= SETPOS_MAX) { a = A_OPEN; target = 100; }
+    if (target <= SETPOS_MIN) { action = A_CLOSE; target = 0; }
+    else if (target >= SETPOS_MAX) { action = A_OPEN; target = 100; }
     else {
       int cur = rt->position;
       if (abs(target - cur) <= 1) return;
-
-      bool opening = (target > cur);
+      bool opening = target > cur;
       uint32_t fullMs = (opening ? tt->open_s : tt->close_s) * 1000UL;
-      uint32_t span = (uint32_t)abs(target - cur);
-      uint32_t durMs = (fullMs * span) / 100UL;
+      uint32_t durMs = (fullMs * (uint32_t)abs(target - cur)) / 100UL;
       if (durMs < 300) durMs = 300;
-
-      logLine(String("[MOVE] SET_POS zone=") + ZONE_NAMES[z] +
-              " blind=" + blind +
-              " cur=" + cur +
-              " tgt=" + target +
-              " dir=" + (opening ? "OPEN" : "CLOSE") +
-              " dur=" + String(durMs/1000.0f, 2) + "s");
-
-      rfSendSpaced(remote, mask, opening, true);
-
-      rt->moving = true;
-      rt->partialMove = true;
-      rt->openingDir = opening;
-      rt->state = opening ? S_OPENING : S_CLOSING;
-      rt->startPos = cur;
-      rt->targetPos = target;
-      rt->moveStartMs = now;
-      rt->moveDurationMs = durMs;
-
-      publishState(z, blind, rt->state, rt->position);
-      return;
+      logLine(String("[MOVE] SET_POS zone=") + config->name + " blind=" + blind + " cur=" + cur + " tgt=" + target);
+      rfSendSpaced(*config, mask, opening, true);
+      rt->moving = true; rt->partialMove = true; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
+      rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
+      publishState(z, blind, rt->state, rt->position); return;
     }
   }
 
-  if (a == A_OPEN || a == A_CLOSE) {
-    bool opening = (a == A_OPEN);
-    int cur = rt->position;
-    int tgt = opening ? 100 : 0;
-
+  if (action == A_OPEN || action == A_CLOSE) {
+    bool opening = action == A_OPEN;
+    int cur = rt->position; int target = opening ? 100 : 0;
     uint32_t fullMs = (opening ? tt->open_s : tt->close_s) * 1000UL;
-    uint32_t span = (uint32_t)abs(tgt - cur);
-    uint32_t durMs = (fullMs * span) / 100UL;
+    uint32_t durMs = (fullMs * (uint32_t)abs(target - cur)) / 100UL;
     if (durMs < 300) durMs = 300;
-
-    logLine(String("[MOVE] ") + (opening ? "OPEN" : "CLOSE") +
-            " zone=" + ZONE_NAMES[z] +
-            " blind=" + blind +
-            " cur=" + cur +
-            " tgt=" + tgt +
-            " dur=" + String(durMs/1000.0f, 2) + "s");
-
-    rfSendSpaced(remote, mask, opening, true);
-
-    rt->moving = true;
-    rt->partialMove = false; // ✅ full moves do not send stop burst
-    rt->openingDir = opening;
-    rt->state = opening ? S_OPENING : S_CLOSING;
-    rt->startPos = cur;
-    rt->targetPos = tgt;
-    rt->moveStartMs = now;
-    rt->moveDurationMs = durMs;
-
-    publishState(z, blind, rt->state, rt->position);
-    return;
+    logLine(String("[MOVE] ") + (opening ? "OPEN" : "CLOSE") + " zone=" + config->name + " blind=" + blind);
+    rfSendSpaced(*config, mask, opening, true);
+    rt->moving = true; rt->partialMove = false; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
+    rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
+    publishState(z, blind, rt->state, rt->position); return;
   }
 
-  if (a == A_STOP && rt->moving) {
+  if (action == A_STOP && rt->moving) {
     uint32_t elapsed = now - rt->moveStartMs;
-    float frac = rt->moveDurationMs ? (float)elapsed / (float)rt->moveDurationMs : 0.0f;
+    float frac = rt->moveDurationMs ? (float)elapsed / rt->moveDurationMs : 0.0f;
     frac = constrain(frac, 0.0f, 1.0f);
-
-    int newPos = rt->startPos + (int)((rt->targetPos - rt->startPos) * frac);
-    rt->position = constrain(newPos, 0, 100);
-
-    bool wasOpening = (rt->state == S_OPENING);
-    logLine(String("[MOVE] STOP zone=") + ZONE_NAMES[z] + " blind=" + blind + " pos=" + rt->position);
-
-    rfSendSpaced(remote, mask, !wasOpening, false);
-
-    rt->moving = false;
-    rt->partialMove = false;
-    rt->state = (rt->position <= 0) ? S_CLOSED : S_OPEN;
-
+    rt->position = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
+    bool wasOpening = rt->state == S_OPENING;
+    logLine(String("[MOVE] STOP zone=") + config->name + " blind=" + blind + " pos=" + rt->position);
+    rfSendSpaced(*config, mask, !wasOpening, false);
+    rt->moving = false; rt->partialMove = false; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN;
     publishState(z, blind, rt->state, rt->position);
   }
 }
 
 static void tickOne(Zone z, uint8_t blind) {
+  const ZoneConfig* config = zoneConfig(z);
   BlindRuntime* rt = getRt(z, blind);
-  if (!rt || !rt->moving) return;
-
-  uint32_t now = millis();
-  uint32_t elapsed = now - rt->moveStartMs;
-
-  float frac = rt->moveDurationMs ? (float)elapsed / (float)rt->moveDurationMs : 1.0f;
+  if (!config || !rt || !rt->moving) return;
+  uint32_t now = millis(); uint32_t elapsed = now - rt->moveStartMs;
+  float frac = rt->moveDurationMs ? (float)elapsed / rt->moveDurationMs : 1.0f;
   frac = constrain(frac, 0.0f, 1.0f);
-
-  int pos = rt->startPos + (int)((rt->targetPos - rt->startPos) * frac);
-  pos = constrain(pos, 0, 100);
-
-  // ✅ per-blind publish throttle (fix for "other blind catches up")
-  if (now - rt->lastPubMs > 500) {
-    publishState(z, blind, rt->state, pos);
-    rt->lastPubMs = now;
-  }
-
-  if (elapsed >= rt->moveDurationMs) {
-    int remote = zoneToRemote(z);
-    uint8_t mask = blindToMask(blind);
-
-    if (rt->partialMove) {
-      logLine(String("[MOVE] Partial complete -> STOP burst zone=") + ZONE_NAMES[z] + " blind=" + blind);
-      rfSendSpaced(remote, mask, !rt->openingDir, false);
-    } else {
-      logLine(String("[MOVE] Full complete zone=") + ZONE_NAMES[z] + " blind=" + blind);
-    }
-
-    rt->moving = false;
-    rt->position = rt->targetPos;
-
-    if (rt->position <= 0) rt->state = S_CLOSED;
-    else if (rt->position >= 100) rt->state = S_OPEN;
-    else rt->state = S_OPEN;
-
-    rt->partialMove = false;
-    publishState(z, blind, rt->state, rt->position);
-  }
+  int pos = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
+  if (now - rt->lastPubMs > 500) { publishState(z, blind, rt->state, pos); rt->lastPubMs = now; }
+  if (elapsed < rt->moveDurationMs) return;
+  if (rt->partialMove) { logLine(String("[MOVE] Partial complete; stopping zone=") + config->name + " blind=" + blind); rfSendSpaced(*config, blindToMask(blind), !rt->openingDir, false); }
+  rt->moving = false; rt->position = rt->targetPos; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN; rt->partialMove = false;
+  publishState(z, blind, rt->state, rt->position);
 }
 
 void motionPublishAllStates() {
   Serial.println("[STATE] Publishing startup state");
-
-  for (int b = 1; b <= 4; b++) {
-    if (ownsZone(Z_FRONT)) {
-      BlindRuntime* rt = getRt(Z_FRONT, b);
-      if (rt) publishState(Z_FRONT, b, rt->state, rt->position);
-    }
-
-    if (ownsZone(Z_BACK)) {
-      BlindRuntime* rt = getRt(Z_BACK, b);
-      if (rt) publishState(Z_BACK, b, rt->state, rt->position);
-    }
-  }
-
-  // kitchen only blind 1
-  if (ownsZone(Z_KITCHEN)) {
-    BlindRuntime* rt = getRt(Z_KITCHEN, 1);
-    if (rt) publishState(Z_KITCHEN, 1, rt->state, rt->position);
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (!config || !ownsZone(z)) continue;
+    for (uint8_t blind = 1; blind <= config->blindCount; blind++) { BlindRuntime* rt = getRt(z, blind); if (rt) publishState(z, blind, rt->state, rt->position); }
   }
 }
 
 void tickAllMovement() {
-  for (int i = 1; i <= 4; i++) {
-    tickOne(Z_FRONT, i);
-    tickOne(Z_KITCHEN, i);
-    tickOne(Z_BACK, i);
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (!config || !ownsZone(z)) continue;
+    for (uint8_t blind = 1; blind <= config->blindCount; blind++) tickOne(z, blind);
   }
 }

@@ -59,14 +59,14 @@ static inline void sendTrain(uint8_t ch, const uint8_t* pkt, int count, int& ok,
   radio.txStandBy();
 }
 
-void rfSendCmd(int remote, uint8_t blindMask, bool open, int durationMs) {
+void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, int durationMs) {
   if (!rf_ready) return;
-  if (remote < 1 || remote > 3) return;
+  if (!remoteId) return;
   if (durationMs <= 0) return;
 
   const char* cmdStr = open ? "OPEN" : "CLOSE";
 
-  logLine(String("[RF] TX remote=") + remote +
+  logLine(String("[RF] TX remote=0x") + String(remoteId[0], HEX) + String(remoteId[1], HEX) +
           " mask=0x" + String(blindMask, HEX) +
           " cmd=" + cmdStr +
           " durationMs=" + durationMs +
@@ -81,9 +81,8 @@ void rfSendCmd(int remote, uint8_t blindMask, bool open, int durationMs) {
 
   uint8_t pkt[5] = {0x00, 0x00, 0x20, 0x00, 0x00};
 
-  // REMOTE_ID is indexed by remote number (1..3); index 0 unused
-  pkt[0] = REMOTE_ID[remote][0];
-  pkt[1] = REMOTE_ID[remote][1];
+  pkt[0] = remoteId[0];
+  pkt[1] = remoteId[1];
   pkt[3] = blindMask;
   pkt[4] = open ? 0xA1 : 0xA2;
 

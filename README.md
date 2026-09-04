@@ -24,6 +24,11 @@ cp firmware/config.local.example.h firmware/config.local.h
 Edit `config.local.h` with the Wi-Fi and MQTT settings for this controller.
 That file is intentionally ignored by Git.
 
+It also defines the local installation topology: MQTT topics, every zone's RF
+remote ID, blind count, and travel times, plus each controller's MAC address,
+name, and owned zones. An ESP32 whose MAC is absent from this map can connect
+to the network but cannot control blinds.
+
 ## Everyday commands
 
 ```sh

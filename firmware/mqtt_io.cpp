@@ -14,10 +14,12 @@ static inline void logLine(const String& s) {
 }
 
 static String topicState(Zone z, uint8_t blind) {
-  return String(MQTT_BASE) + "/" + ZONE_NAMES[z] + "/" + blind + "/state";
+  const ZoneConfig* config = zoneConfig(z);
+  return config ? String(MQTT_BASE) + "/" + config->name + "/" + blind + "/state" : "";
 }
 static String topicPos(Zone z, uint8_t blind) {
-  return String(MQTT_BASE) + "/" + ZONE_NAMES[z] + "/" + blind + "/position";
+  const ZoneConfig* config = zoneConfig(z);
+  return config ? String(MQTT_BASE) + "/" + config->name + "/" + blind + "/position" : "";
 }
 
 void mqttPublishState(Zone z, uint8_t blind, MoveState s, int pos) {
@@ -54,10 +56,7 @@ static Zone parseZoneFromTopic(const String& t, uint8_t& blind) {
 
   blind = (uint8_t)blindStr.toInt();
 
-  if (zone == "front") return Z_FRONT;
-  if (zone == "kitchen") return Z_KITCHEN;
-  if (zone == "back") return Z_BACK;
-  return Z_UNKNOWN;
+  return zoneFromName(zone);
 }
 
 static Action parseAction(const String& payload, int& targetPosOut) {
@@ -88,7 +87,7 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
 
   logLine("[MQTT] RX topic=" + topic + " payload='" + payload + "'");
 
-  if (topic == "homeassistant/status") {
+  if (topic == HOMEASSISTANT_STATUS_TOPIC) {
     if (payload == "online") {
       Serial.println("[MQTT] Home Assistant online -> republish all states");
       motionPublishAllStates();
@@ -98,9 +97,9 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
 
   uint8_t blind = 0;
   Zone z = parseZoneFromTopic(topic, blind);
-  if (z == Z_UNKNOWN || blind < 1 || blind > 4) return;
+  const ZoneConfig* config = zoneConfig(z);
+  if (!config || blind < 1 || blind > config->blindCount) return;
   if (!ownsZone(z)) return;
-  if (z == Z_KITCHEN && blind != 1) return;
 
   int targetPos = -1;
   Action a = parseAction(payload, targetPos);
@@ -110,7 +109,7 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
 }
 
 static bool connectOnce() {
-  String clientId = "blinds-" + devId;
+  String clientId = String(MQTT_BASE) + "-" + devId;
   String will = String(MQTT_BASE) + "/" + devId + "/status";
 
   bool ok;
@@ -125,7 +124,7 @@ static bool connectOnce() {
     String sub = String(MQTT_BASE) + "/+/+/set";
     mqtt->subscribe(sub.c_str());
 
-    mqtt->subscribe("homeassistant/status");
+    mqtt->subscribe(HOMEASSISTANT_STATUS_TOPIC);
   }
   return ok;
 }

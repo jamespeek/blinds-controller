@@ -84,16 +84,6 @@ void setup() {
   Serial.println(WiFi.localIP());
   Serial.print("MAC: ");
   Serial.println(WiFi.macAddress());
-  Serial.print("Zone: ");
-  if (WiFi.macAddress() == FRONT_ESP_MAC) {
-    Serial.println("front");
-  } else if (WiFi.macAddress() == BACK_ESP_MAC) {
-    Serial.println("back");
-  } else {
-    Serial.println("unknown");
-  }
-
-  
   queueInit();
 
   rfInit();
@@ -102,6 +92,8 @@ void setup() {
   }
 
   motionInit();
+  Serial.print("Controller: ");
+  Serial.println(controllerName());
 
   String deviceId = makeDeviceId();
   mqttInit(mqtt, deviceId);

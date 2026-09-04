@@ -4,4 +4,4 @@
 
 void rfInit();
 bool rfOk();
-void rfSendCmd(int remote, uint8_t blindMask, bool open, int durationMs);
+void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, int durationMs);
