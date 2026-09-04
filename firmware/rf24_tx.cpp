@@ -4,9 +4,10 @@
 
 static RF24 radio(RF_CE_PIN, RF_CS_PIN);
 static bool rf_ready = false;
+static uint32_t rfSequence = 0;
 
 static inline void logLine(const String& s) {
-  if (DEBUG_LOG) Serial.println(s);
+  if (DEBUG_LOG || RF_DRY_RUN) Serial.println(s);
 }
 
 bool rfOk() { return rf_ready; }
@@ -59,20 +60,26 @@ static inline void sendTrain(uint8_t ch, const uint8_t* pkt, int count, int& ok,
   radio.txStandBy();
 }
 
-void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, int durationMs) {
+void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, RfProfile profile) {
   if (!rf_ready) return;
   if (!remoteId) return;
-  if (durationMs <= 0) return;
+  const RfProfilePlan plan = rfProfilePlan(profile, RF_START_DURATION_MS, RF_STOP_CYCLES);
+  if (plan.durationMs == 0 && plan.maxCycles == 0) return;
 
   const char* cmdStr = open ? "OPEN" : "CLOSE";
+  const uint32_t sequence = ++rfSequence;
 
-  logLine(String("[RF] TX remote=0x") + String(remoteId[0], HEX) + String(remoteId[1], HEX) +
+  logLine(String("[RF #") + sequence + "] profile=" + rfProfileName(profile) +
+          " remote=0x" + String(remoteId[0], HEX) + String(remoteId[1], HEX) +
           " mask=0x" + String(blindMask, HEX) +
           " cmd=" + cmdStr +
-          " durationMs=" + durationMs +
-          " trains=" + RF_TRAIN_PACKETS_0 + "/" + RF_TRAIN_PACKETS_1 + "/" + RF_TRAIN_PACKETS_2 +
-          " dlyUs=" + RF_TRAIN_DELAY_US +
-          " gapMs=" + RF_SEND_GAP_MS);
+          " planned=" + (plan.maxCycles ? String(plan.maxCycles) + " cycle(s)" : String(plan.durationMs) + "ms") +
+          " dryRun=" + String(RF_DRY_RUN ? "true" : "false"));
+
+#if RF_DRY_RUN
+  logLine(String("[RF #") + sequence + "] complete actual=0ms (not transmitted)");
+  return;
+#endif
 
   radio.stopListening();
   radio.setPayloadSize(5);
@@ -91,21 +98,19 @@ void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, int dura
   const uint32_t tStart = millis();
   int cyclesDone = 0;
 
-  while ((int)(millis() - tStart) < durationMs) {
+  while (plan.maxCycles ? cyclesDone < plan.maxCycles : (int)(millis() - tStart) < plan.durationMs) {
     // One "press cycle" = hop across 3 channels with configured trains
     sendTrain(RF_HOP_ORDER[0], pkt, RF_TRAIN_PACKETS_0, ok, fail);
-    if ((int)(millis() - tStart) >= durationMs) break;
-
     sendTrain(RF_HOP_ORDER[1], pkt, RF_TRAIN_PACKETS_1, ok, fail);
-    if ((int)(millis() - tStart) >= durationMs) break;
-
     sendTrain(RF_HOP_ORDER[2], pkt, RF_TRAIN_PACKETS_2, ok, fail);
     cyclesDone++;
+
+    if (plan.maxCycles) continue;
 
     // Optional gap between cycles (helps match "held press" timing)
     if (RF_SEND_GAP_MS > 0) {
       // Don't oversleep past the deadline
-      int remaining = durationMs - (int)(millis() - tStart);
+      int remaining = plan.durationMs - (int)(millis() - tStart);
       if (remaining <= 0) break;
       delay((RF_SEND_GAP_MS < remaining) ? RF_SEND_GAP_MS : remaining);
     }
@@ -116,7 +121,7 @@ void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, int dura
 
   radio.flush_tx();
 
-  logLine(String("[RF] done durationMs=") + (millis() - tStart) +
+  logLine(String("[RF #") + sequence + "] complete actual=" + (millis() - tStart) + "ms" +
           " cycles=" + cyclesDone +
           " ok=" + ok + " fail=" + fail);
 }

@@ -85,12 +85,18 @@ void motionInit() {
 
 static void publishState(Zone z, uint8_t blind, MoveState state, int pos) { mqttPublishState(z, blind, state, pos); }
 
-static void rfSendSpaced(const ZoneConfig& config, uint8_t mask, bool open, bool longPress) {
+static void rfSendSpaced(const ZoneConfig& config, uint8_t mask, bool open, RfProfile profile) {
   uint32_t elapsed = millis() - lastRfStartMs;
   if (elapsed < RF_MIN_GAP_MS) delay(RF_MIN_GAP_MS - elapsed);
   lastRfStartMs = millis();
-  if (longPress) { rfSendCmd(config.remoteId, mask, open, 700); delay(200); rfSendCmd(config.remoteId, mask, open, 700); }
-  else rfSendCmd(config.remoteId, mask, open, 500);
+  if (profile == RfProfile::Start) {
+    for (uint8_t i = 0; i < RF_START_REPEAT_COUNT; i++) {
+      rfSendCmd(config.remoteId, mask, open, profile);
+      if (i + 1 < RF_START_REPEAT_COUNT) delay(RF_START_REPEAT_GAP_MS);
+    }
+    return;
+  }
+  rfSendCmd(config.remoteId, mask, open, profile);
 }
 
 void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
@@ -126,7 +132,7 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
       uint32_t durMs = (fullMs * (uint32_t)abs(target - cur)) / 100UL;
       if (durMs < 300) durMs = 300;
       logLine(String("[MOVE] SET_POS zone=") + config->name + " blind=" + blind + " cur=" + cur + " tgt=" + target);
-      rfSendSpaced(*config, mask, opening, true);
+      rfSendSpaced(*config, mask, opening, RfProfile::Start);
       rt->moving = true; rt->partialMove = true; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
       rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
       publishState(z, blind, rt->state, rt->position); return;
@@ -140,7 +146,7 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
     uint32_t durMs = (fullMs * (uint32_t)abs(target - cur)) / 100UL;
     if (durMs < 300) durMs = 300;
     logLine(String("[MOVE] ") + (opening ? "OPEN" : "CLOSE") + " zone=" + config->name + " blind=" + blind);
-    rfSendSpaced(*config, mask, opening, true);
+    rfSendSpaced(*config, mask, opening, RfProfile::Start);
     rt->moving = true; rt->partialMove = false; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
     rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
     publishState(z, blind, rt->state, rt->position); return;
@@ -153,7 +159,7 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
     rt->position = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
     bool wasOpening = rt->state == S_OPENING;
     logLine(String("[MOVE] STOP zone=") + config->name + " blind=" + blind + " pos=" + rt->position);
-    rfSendSpaced(*config, mask, !wasOpening, false);
+    rfSendSpaced(*config, mask, !wasOpening, RfProfile::Stop);
     rt->moving = false; rt->partialMove = false; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN;
     publishState(z, blind, rt->state, rt->position);
   }
@@ -169,7 +175,7 @@ static void tickOne(Zone z, uint8_t blind) {
   int pos = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
   if (now - rt->lastPubMs > 500) { publishState(z, blind, rt->state, pos); rt->lastPubMs = now; }
   if (elapsed < rt->moveDurationMs) return;
-  if (rt->partialMove) { logLine(String("[MOVE] Partial complete; stopping zone=") + config->name + " blind=" + blind); rfSendSpaced(*config, blindToMask(blind), !rt->openingDir, false); }
+  if (rt->partialMove) { logLine(String("[MOVE] Partial complete; stopping zone=") + config->name + " blind=" + blind); rfSendSpaced(*config, blindToMask(blind), !rt->openingDir, RfProfile::Stop); }
   rt->moving = false; rt->position = rt->targetPos; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN; rt->partialMove = false;
   publishState(z, blind, rt->state, rt->position);
 }

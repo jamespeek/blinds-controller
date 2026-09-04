@@ -74,6 +74,21 @@ static const int RF_CH_SETTLE_US = 200;    // delay after setChannel()
 
 static const int RF_SEND_GAP_MS = 20;
 
+// Motion-start gestures are intentionally redundant for reception reliability.
+// A stop must be a single complete channel hop, otherwise a receiver may see
+// repeated opposite-direction frames as a new movement request.
+static const uint16_t RF_START_DURATION_MS = 700;
+static const uint8_t RF_START_REPEAT_COUNT = 2;
+static const uint16_t RF_START_REPEAT_GAP_MS = 200;
+static const uint8_t RF_STOP_CYCLES = 1;
+
+// Set at build time with -DRF_DRY_RUN=1 to exercise timing and logging without
+// writing any packets to the radio. This is safer than using another channel,
+// which would still transmit RF energy.
+#ifndef RF_DRY_RUN
+#define RF_DRY_RUN 0
+#endif
+
 /* ========= Position clamp rules =========
    - set_position <= 15 -> CLOSE
    - set_position >= 85 -> OPEN

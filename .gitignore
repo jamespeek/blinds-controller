@@ -5,3 +5,4 @@ firmware/config.local.h
 
 # Arduino CLI output.
 .arduino-build/
+.arduino-build-dry-run/
