@@ -4,6 +4,9 @@
 
 - `src/` is the Arduino sketch. Arduino requires the sketch file to match its
   directory, so the entry point is `src/src.ino`.
+- Build for **ESP32S2 Dev Module** with USB CDC enabled and **Upload Mode:
+  Internal USB** (`esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc`). These
+  options are defined by `FQBN` in the `Makefile`.
 - `src/config.local.h` contains Wi-Fi, MQTT, controller MAC, zone, RF remote,
   and travel-time configuration. It is ignored by Git; never print, commit, or
   replace its credentials.

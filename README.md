@@ -1,10 +1,5 @@
 # Blinds controller firmware
 
-Arduino firmware for the ESP32-S2 blind controller. The target board is
-**ESP32S2 Dev Module** with USB CDC enabled and **Upload Mode: Internal USB**
-(`esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc`). The currently connected
-device is available at `/dev/cu.usbmodem01`.
-
 ## Why this exists
 
 Hunter Douglas blinds can be controlled by remotes that use infrared and a
