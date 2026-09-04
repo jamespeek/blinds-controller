@@ -5,6 +5,18 @@ Arduino firmware for the ESP32-S2 blind controller. The target board is
 (`esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc`). The currently connected
 device is available at `/dev/cu.usbmodem01`.
 
+## Why this exists
+
+Hunter Douglas blinds can be controlled by remotes that use infrared and a
+2.4 GHz RF protocol. This project makes the RF remote protocol available to
+Home Assistant through an ESP32-S2, MQTT, and an nRF24L01+-compatible radio.
+The RF payload and channel-hopping approach are based on this useful
+[Arduino Forum investigation](https://forum.arduino.cc/t/nrf24l01-hack-on-hunter-douglas-shades/676940?page=2).
+
+One installation can use multiple controllers. Each ESP32 is identified by
+its Wi-Fi MAC address and is configured to own specific zones, so controllers
+can be placed near the blinds they target while sharing the same MQTT topics.
+
 ## Hardware used
 
 Each controller uses:
@@ -58,6 +70,33 @@ It also defines the local installation topology: MQTT topics, every zone's RF
 remote ID, blind count, and travel times, plus each controller's MAC address,
 name, and owned zones. An ESP32 whose MAC is absent from this map can connect
 to the network but cannot control blinds.
+
+## Home Assistant
+
+Configure each blind as an MQTT cover. Replace the example name, ID, zone, and
+blind number to match a zone in `src/config.local.h`:
+
+```yaml
+mqtt:
+  cover:
+    - name: "Office top blind"
+      unique_id: blind_front_1
+      device_class: shade
+      command_topic: "blinds/front/1/set"
+      state_topic: "blinds/front/1/state"
+      position_topic: "blinds/front/1/position"
+      set_position_topic: "blinds/front/1/set"
+```
+
+Because the controller estimates position from configured travel times rather
+than receiving blind feedback, mark the cover as assumed state:
+
+```yaml
+homeassistant:
+  customize:
+    cover.office_top_blind:
+      assumed_state: true
+```
 
 ## Commands
 
