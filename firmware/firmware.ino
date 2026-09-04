@@ -111,9 +111,11 @@ void setup() {
   Serial.println(controllerName());
 
 #if RF_DRY_RUN
-  // Give a monitor started after upload time to attach before emitting the
-  // self-test logs. This block is absent from normal firmware builds.
-  delay(3000);
+  // The uploader can retain the USB CDC port briefly after a successful
+  // upload. Leave enough time for it to release the port and for a monitor to
+  // attach before emitting the self-test logs. This block is absent from
+  // normal firmware builds.
+  delay(20000);
   runDryRunSelfTest();
 #endif
 
