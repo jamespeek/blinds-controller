@@ -145,6 +145,16 @@ normal `make flash` build.
 start/stop profile self-test after boot, so it is appropriate for bench and
 serial-log verification.
 
+## RF reliability tuning
+
+RF timing is still being tuned for reliable reception across the installation.
+Movement starts currently use two redundant send profiles, while STOP uses one
+short channel-hop gesture to avoid a repeated opposite-direction command being
+interpreted as a new movement. The resend count, timing, and train parameters
+are grouped in `src/config.h`. Test any adjustment with `make flash-dry-run`
+first, then make a small observed live-RF change rather than increasing every
+retry at once.
+
 ## Connectivity recovery
 
 The controller treats the live MQTT connection as its service-health check;
