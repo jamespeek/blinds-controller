@@ -48,6 +48,21 @@ static void initWatchdog() {
   }
 }
 
+#if RF_DRY_RUN
+static void runDryRunSelfTest() {
+  Serial.println("[DRY RUN] Exercising start and stop RF profiles; no packets will be transmitted");
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (!config || !ownsZone(z)) continue;
+    Serial.println(String("[DRY RUN] Zone ") + config->name + ", blind 1");
+    startMove(z, 1, A_OPEN, -1);
+    startMove(z, 1, A_STOP, -1);
+    return;
+  }
+  Serial.println("[DRY RUN] No owned blind is available for the self-test");
+}
+#endif
+
 void setup() {
   Serial.begin(115200);
   delay(300);
@@ -94,6 +109,13 @@ void setup() {
   motionInit();
   Serial.print("Controller: ");
   Serial.println(controllerName());
+
+#if RF_DRY_RUN
+  // Give a monitor started after upload time to attach before emitting the
+  // self-test logs. This block is absent from normal firmware builds.
+  delay(3000);
+  runDryRunSelfTest();
+#endif
 
   String deviceId = makeDeviceId();
   mqttInit(mqtt, deviceId);
