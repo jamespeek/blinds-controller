@@ -27,7 +27,7 @@ Each controller uses:
   adapter for transmitting blind commands.
 - A USB data cable for power, programming, and serial monitoring.
 
-Specific items used in this installation:
+Specific items used in my installation:
 
 - [DIANN ESP32 S2 Mini V1.0.0](https://www.amazon.com.au/dp/B0DHVBB6P2)
 - [nRF24L01+ PA+LNA radio module with SMA antenna and 8-pin breakout adapter](https://www.amazon.com.au/dp/B0CDV8J2WF)
