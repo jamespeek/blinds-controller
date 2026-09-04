@@ -6,6 +6,8 @@
 
 static PubSubClient* mqtt = nullptr;
 static String devId;
+static uint32_t nextConnectAttemptMs = 0;
+static uint32_t connectRetryDelayMs = NETWORK_RETRY_INITIAL_MS;
 
 static inline void logLine(const String& s) {
   if (DEBUG_LOG) Serial.println(s);
@@ -132,13 +134,23 @@ void mqttInit(PubSubClient& client, const String& deviceId) {
   mqtt = &client;
   devId = deviceId;
   mqtt->setServer(MQTT_HOST, MQTT_PORT);
+  mqtt->setSocketTimeout(MQTT_SOCKET_TIMEOUT_S);
   mqtt->setCallback(callback);
+}
+
+bool mqttIsConnected() {
+  return mqtt && mqtt->connected();
 }
 
 void mqttLoopEnsure() {
   if (!mqtt) return;
 
+  if (WiFi.status() != WL_CONNECTED) return;
+
   if (!mqtt->connected()) {
+    uint32_t now = millis();
+    if ((int32_t)(now - nextConnectAttemptMs) < 0) return;
+
     Serial.print("Connecting to MQTT broker ");
     Serial.print(MQTT_HOST);
     Serial.print(" ... ");
@@ -146,12 +158,18 @@ void mqttLoopEnsure() {
     if (connectOnce()) {
       Serial.println("connected");
       motionPublishAllStates();
+      connectRetryDelayMs = NETWORK_RETRY_INITIAL_MS;
+      nextConnectAttemptMs = 0;
 
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqtt->state());
-      Serial.println(" retrying...");
-      delay(1000);
+      Serial.print(" retrying in ");
+      Serial.print(connectRetryDelayMs / 1000.0f, 1);
+      Serial.println("s");
+
+      nextConnectAttemptMs = now + connectRetryDelayMs;
+      connectRetryDelayMs = min(connectRetryDelayMs * 2, NETWORK_RETRY_MAX_MS);
       return;
     }
   }

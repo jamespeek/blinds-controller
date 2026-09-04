@@ -9,6 +9,7 @@
 #include "motion.h"
 #include "mqtt_io.h"
 #include "http_api.h"
+#include "connectivity.h"
 
 #include "esp_task_wdt.h"
 #include "esp_log.h"
@@ -104,6 +105,7 @@ void setup() {
 
   String deviceId = makeDeviceId();
   mqttInit(mqtt, deviceId);
+  connectivityInit();
 
   httpInit(server);
 
@@ -118,6 +120,7 @@ void loop() {
 
   httpLoop(server);
 
+  connectivityLoop();
   mqttLoopEnsure();
 
   tickAllMovement();

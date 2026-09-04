@@ -10,6 +10,13 @@ static const bool DEBUG_LOG = false;
 /* ========= Watchdog ========= */
 static const int WDT_TIMEOUT_S = 15;
 
+/* ========= Connectivity recovery ========= */
+static const uint32_t NETWORK_RETRY_INITIAL_MS = 2000;
+static const uint32_t NETWORK_RETRY_MAX_MS = 60000;
+static const uint32_t NETWORK_WIFI_RESET_MS = 5UL * 60UL * 1000UL;
+static const uint32_t NETWORK_DEVICE_REBOOT_MS = 30UL * 60UL * 1000UL;
+static const uint16_t MQTT_SOCKET_TIMEOUT_S = 5;
+
 /* ========= RF24 wiring (ESP32-S2 Mini) ========= */
 static const int RF_CE_PIN = 9;  // purple
 static const int RF_CS_PIN = 11;  // blue

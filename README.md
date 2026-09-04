@@ -43,6 +43,13 @@ make firmware-flash PORT=/dev/cu.usbmodem02
 The monitor uses a baud rate of 115200, which matches `Serial.begin(115200)`
 in the sketch.
 
+## Connectivity recovery
+
+The controller treats the live MQTT connection as its service-health check;
+there is no separate ICMP ping. Wi-Fi and MQTT retries begin at two seconds
+and back off to one minute. After five minutes without Wi-Fi or MQTT, it resets
+the Wi-Fi radio; after 30 minutes without recovery, it reboots the controller.
+
 ## Credentials
 
 The prior source file stored network and MQTT credentials in plain text. Treat

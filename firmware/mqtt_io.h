@@ -4,5 +4,6 @@
 
 void mqttInit(PubSubClient& client, const String& deviceId);
 void mqttLoopEnsure();
+bool mqttIsConnected();
 
 void mqttPublishState(Zone z, uint8_t blind, MoveState s, int pos);
