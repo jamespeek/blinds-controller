@@ -1,0 +1,160 @@
+#include <WiFi.h>
+#include "config.h"
+#include "mqtt_io.h"
+#include "queue.h"
+#include "motion.h"
+
+static PubSubClient* mqtt = nullptr;
+static String devId;
+
+static inline void logLine(const String& s) {
+  if (DEBUG_LOG) Serial.println(s);
+}
+
+static String topicState(Zone z, uint8_t blind) {
+  return String(MQTT_BASE) + "/" + ZONE_NAMES[z] + "/" + blind + "/state";
+}
+static String topicPos(Zone z, uint8_t blind) {
+  return String(MQTT_BASE) + "/" + ZONE_NAMES[z] + "/" + blind + "/position";
+}
+
+void mqttPublishState(Zone z, uint8_t blind, MoveState s, int pos) {
+  if (!mqtt) return;
+
+  const char* st =
+    (s == S_OPEN) ? "open" :
+    (s == S_CLOSED) ? "closed" :
+    (s == S_OPENING) ? "opening" : "closing";
+
+  mqtt->publish(topicState(z, blind).c_str(), st, false);
+
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d", pos);
+  mqtt->publish(topicPos(z, blind).c_str(), buf, false);
+}
+
+static Zone parseZoneFromTopic(const String& t, uint8_t& blind) {
+  // blinds/<zone>/<blind>/set
+  String prefix = String(MQTT_BASE) + "/";
+  if (!t.startsWith(prefix)) return Z_UNKNOWN;
+
+  int baseLen = prefix.length();
+  int p1 = t.indexOf('/', baseLen);
+  if (p1 < 0) return Z_UNKNOWN;
+  int p2 = t.indexOf('/', p1 + 1);
+  if (p2 < 0) return Z_UNKNOWN;
+
+  String zone = t.substring(baseLen, p1);
+  String blindStr = t.substring(p1 + 1, p2);
+  String leaf = t.substring(p2 + 1);
+
+  if (leaf != "set") return Z_UNKNOWN;
+
+  blind = (uint8_t)blindStr.toInt();
+
+  if (zone == "front") return Z_FRONT;
+  if (zone == "kitchen") return Z_KITCHEN;
+  if (zone == "back") return Z_BACK;
+  return Z_UNKNOWN;
+}
+
+static Action parseAction(const String& payload, int& targetPosOut) {
+  targetPosOut = -1;
+  if (payload == "OPEN") return A_OPEN;
+  if (payload == "CLOSE") return A_CLOSE;
+  if (payload == "STOP") return A_STOP;
+
+  bool isNum = payload.length() > 0;
+  for (int i = 0; i < (int)payload.length(); i++) {
+    if (!isDigit(payload[i])) { isNum = false; break; }
+  }
+  if (isNum) {
+    int v = payload.toInt();
+    if (v >= 0 && v <= 100) { targetPosOut = v; return A_SET_POS; }
+  }
+  return A_STOP;
+}
+
+static void callback(char* topicC, byte* payloadB, unsigned int len) {
+  if (!mqtt) return;
+
+  String topic(topicC);
+  String payload;
+  payload.reserve(len);
+  for (unsigned int i=0; i<len; i++) payload += (char)payloadB[i];
+  payload.trim();
+
+  logLine("[MQTT] RX topic=" + topic + " payload='" + payload + "'");
+
+  if (topic == "homeassistant/status") {
+    if (payload == "online") {
+      Serial.println("[MQTT] Home Assistant online -> republish all states");
+      motionPublishAllStates();
+    }
+    return;
+  }
+
+  uint8_t blind = 0;
+  Zone z = parseZoneFromTopic(topic, blind);
+  if (z == Z_UNKNOWN || blind < 1 || blind > 4) return;
+  if (!ownsZone(z)) return;
+  if (z == Z_KITCHEN && blind != 1) return;
+
+  int targetPos = -1;
+  Action a = parseAction(payload, targetPos);
+
+  Cmd c{z, blind, a, targetPos};
+  if (!qEnqueue(c)) logLine("[MQTT] Queue FULL - dropped");
+}
+
+static bool connectOnce() {
+  String clientId = "blinds-" + devId;
+  String will = String(MQTT_BASE) + "/" + devId + "/status";
+
+  bool ok;
+  if (strlen(MQTT_USER) == 0) {
+    ok = mqtt->connect(clientId.c_str(), will.c_str(), 1, true, "offline");
+  } else {
+    ok = mqtt->connect(clientId.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "offline");
+  }
+
+  if (ok) {
+    mqtt->publish(will.c_str(), "online", true);
+    String sub = String(MQTT_BASE) + "/+/+/set";
+    mqtt->subscribe(sub.c_str());
+
+    mqtt->subscribe("homeassistant/status");
+  }
+  return ok;
+}
+
+void mqttInit(PubSubClient& client, const String& deviceId) {
+  mqtt = &client;
+  devId = deviceId;
+  mqtt->setServer(MQTT_HOST, MQTT_PORT);
+  mqtt->setCallback(callback);
+}
+
+void mqttLoopEnsure() {
+  if (!mqtt) return;
+
+  if (!mqtt->connected()) {
+    Serial.print("Connecting to MQTT broker ");
+    Serial.print(MQTT_HOST);
+    Serial.print(" ... ");
+
+    if (connectOnce()) {
+      Serial.println("connected");
+      motionPublishAllStates();
+
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqtt->state());
+      Serial.println(" retrying...");
+      delay(1000);
+      return;
+    }
+  }
+
+  mqtt->loop();
+}

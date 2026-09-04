@@ -1,0 +1,50 @@
+# Blinds controller firmware
+
+Arduino firmware for the ESP32-S2 blind controller. The target board is
+**ESP32S2 Dev Module** with USB CDC enabled and **Upload Mode: Internal USB**
+(`esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc`). The currently connected
+device is available at `/dev/cu.usbmodem01`.
+
+## One-time setup
+
+Install the command-line tool, then install the project-pinned board core and
+libraries:
+
+```sh
+brew install arduino-cli
+make firmware-setup
+```
+
+Create the local credentials file before compiling:
+
+```sh
+cp firmware/config.local.example.h firmware/config.local.h
+```
+
+Edit `config.local.h` with the Wi-Fi and MQTT settings for this controller.
+That file is intentionally ignored by Git.
+
+## Everyday commands
+
+```sh
+make firmware-build
+make firmware-flash
+make firmware-monitor
+make firmware-boards
+```
+
+`firmware-flash` is the only command that changes firmware on the device. If
+the serial port changes, override it explicitly:
+
+```sh
+make firmware-flash PORT=/dev/cu.usbmodem02
+```
+
+The monitor uses a baud rate of 115200, which matches `Serial.begin(115200)`
+in the sketch.
+
+## Credentials
+
+The prior source file stored network and MQTT credentials in plain text. Treat
+those values as exposed: rotate them, then place replacements only in
+`config.local.h`.
