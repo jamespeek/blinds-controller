@@ -36,6 +36,7 @@ make firmware-build
 make firmware-flash
 make firmware-monitor
 make firmware-boards
+make firmware-test
 ```
 
 `firmware-flash` is the only command that changes firmware on the device. If
@@ -44,6 +45,20 @@ the serial port changes, override it explicitly:
 ```sh
 make firmware-flash PORT=/dev/cu.usbmodem02
 ```
+
+## Safe RF dry run
+
+Use the dry-run build to verify command handling and RF profile logs without
+calling the radio write path. It is safer than using a different radio channel,
+which would still broadcast.
+
+```sh
+make firmware-build-dry-run
+make firmware-flash-dry-run
+```
+
+The dry-run firmware remains non-transmitting until it is replaced with a
+normal `make firmware-flash` build.
 
 The monitor uses a baud rate of 115200, which matches `Serial.begin(115200)`
 in the sketch.
