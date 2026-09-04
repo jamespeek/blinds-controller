@@ -58,8 +58,9 @@ Create the local credentials file before compiling:
 cp src/config.local.example.h src/config.local.h
 ```
 
-Edit `src/config.local.h` with the Wi-Fi and MQTT settings for this controller.
-That file is intentionally ignored by Git.
+Copy and edit [`src/config.local.example.h`](src/config.local.example.h) as
+`src/config.local.h` with the Wi-Fi and MQTT settings for this controller.
+The local file is intentionally ignored by Git because it contains credentials.
 
 It also defines the local installation topology: MQTT topics, every zone's RF
 remote ID, blind count, and travel times, plus each controller's MAC address,
@@ -69,7 +70,8 @@ to the network but cannot control blinds.
 ## Home Assistant
 
 Configure each blind as an MQTT cover. Replace the example name, ID, zone, and
-blind number to match a zone in `src/config.local.h`:
+blind number to match a zone in your local configuration, based on
+[`src/config.local.example.h`](src/config.local.example.h):
 
 ```yaml
 mqtt:
@@ -165,5 +167,6 @@ the Wi-Fi radio; after 30 minutes without recovery, it reboots the controller.
 ## Credentials
 
 The prior source file stored network and MQTT credentials in plain text. Treat
-those values as exposed: rotate them, then place replacements only in
-`config.local.h`.
+those values as exposed: rotate them, then place replacements only in the
+local configuration created from
+[`src/config.local.example.h`](src/config.local.example.h).
