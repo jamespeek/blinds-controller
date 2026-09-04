@@ -9,13 +9,16 @@ device is available at `/dev/cu.usbmodem01`.
 
 Each controller uses:
 
-- A [DIANN ESP32 S2 Mini V1.0.0](https://www.amazon.com.au/dp/B0DHVBB6P2),
-  based on the ESP32-S2FN4R2 and fitted with 4 MB flash, 2 MB PSRAM, and a
-  USB-C port. Build it as an **ESP32S2 Dev Module**.
-- An [nRF24L01+ PA+LNA 2.4 GHz radio module with SMA antenna and 8-pin
-  breakout adapter](https://www.amazon.com.au/dp/B0CDV8J2WF) for transmitting
-  blind commands.
+- An ESP32-S2 Mini development board with 4 MB flash, 2 MB PSRAM, and USB-C.
+  Build it as an **ESP32S2 Dev Module**.
+- An nRF24L01+-compatible 2.4 GHz radio module with a suitable 3.3 V breakout
+  adapter for transmitting blind commands.
 - A USB data cable for power, programming, and serial monitoring.
+
+Specific items used in this installation:
+
+- [DIANN ESP32 S2 Mini V1.0.0](https://www.amazon.com.au/dp/B0DHVBB6P2)
+- [nRF24L01+ PA+LNA radio module with SMA antenna and 8-pin breakout adapter](https://www.amazon.com.au/dp/B0CDV8J2WF)
 
 The radio is connected to the ESP32-S2 Mini over SPI as follows:
 
