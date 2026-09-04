@@ -34,6 +34,8 @@ firmware-flash-dry-run: firmware-build-dry-run
 firmware-test:
 	c++ -std=c++17 -Wall -Wextra -Werror tests/test_rf_profiles.cpp -o /tmp/blinds-rf-profile-tests
 	/tmp/blinds-rf-profile-tests
+	c++ -std=c++17 -Wall -Wextra -Werror -Itests/fakes tests/test_queue.cpp firmware/queue.cpp -o /tmp/blinds-queue-tests
+	/tmp/blinds-queue-tests
 
 firmware-monitor:
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) monitor --port $(PORT) --config baudrate=115200
