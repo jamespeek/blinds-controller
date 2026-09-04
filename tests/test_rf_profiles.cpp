@@ -1,6 +1,6 @@
 #include <cassert>
 #include <string>
-#include "../firmware/rf_profiles.h"
+#include "../src/rf_profiles.h"
 
 int main() {
   constexpr RfProfilePlan start = rfProfilePlan(RfProfile::Start, 700, 1);

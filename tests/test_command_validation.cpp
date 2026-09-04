@@ -1,5 +1,5 @@
 #include <cassert>
-#include "../firmware/command_validation.h"
+#include "../src/command_validation.h"
 
 int main() {
   assert(isUnsignedDecimal("0", 1));

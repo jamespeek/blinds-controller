@@ -39,16 +39,16 @@ libraries:
 
 ```sh
 brew install arduino-cli
-make firmware-setup
+make setup
 ```
 
 Create the local credentials file before compiling:
 
 ```sh
-cp firmware/config.local.example.h firmware/config.local.h
+cp src/config.local.example.h src/config.local.h
 ```
 
-Edit `config.local.h` with the Wi-Fi and MQTT settings for this controller.
+Edit `src/config.local.h` with the Wi-Fi and MQTT settings for this controller.
 That file is intentionally ignored by Git.
 
 It also defines the local installation topology: MQTT topics, every zone's RF
@@ -56,22 +56,38 @@ remote ID, blind count, and travel times, plus each controller's MAC address,
 name, and owned zones. An ESP32 whose MAC is absent from this map can connect
 to the network but cannot control blinds.
 
-## Everyday commands
+## Commands
 
 ```sh
-make firmware-build
-make firmware-flash
-make firmware-monitor
-make firmware-boards
-make firmware-test
+make build
+make flash
+make monitor
+make boards
+make test
 ```
 
-`firmware-flash` is the only command that changes firmware on the device. If
-the serial port changes, override it explicitly:
+`make setup` installs the project-pinned ESP32 board support and required
+libraries. Run it once on a new computer or after clearing Arduino CLI data.
+
+`make build` compiles the normal RF-transmitting firmware but does not change
+the connected controller.
+
+`make flash` builds and installs the normal firmware. It is the only routine
+command that enables actual RF control. If the serial port changes, override
+it explicitly:
 
 ```sh
-make firmware-flash PORT=/dev/cu.usbmodem02
+make flash PORT=/dev/cu.usbmodem02
 ```
+
+`make monitor` opens the controller's serial console at 115200 baud, matching
+the firmware's logging speed. Stop it with `Ctrl-C` before flashing.
+
+`make boards` lists attached serial devices to help identify the controller's
+port.
+
+`make test` runs the fast host-side tests for RF profiles, queue behaviour,
+and command validation. It does not require a controller.
 
 ## Safe RF dry run
 
@@ -80,15 +96,17 @@ calling the radio write path. It is safer than using a different radio channel,
 which would still broadcast.
 
 ```sh
-make firmware-build-dry-run
-make firmware-flash-dry-run
+make build-dry-run
+make flash-dry-run
 ```
 
 The dry-run firmware remains non-transmitting until it is replaced with a
-normal `make firmware-flash` build.
+normal `make flash` build.
 
-The monitor uses a baud rate of 115200, which matches `Serial.begin(115200)`
-in the sketch.
+`make build-dry-run` compiles the same firmware with RF writes disabled.
+`make flash-dry-run` installs that non-transmitting build and runs its safe
+start/stop profile self-test after boot, so it is appropriate for bench and
+serial-log verification.
 
 ## Connectivity recovery
 

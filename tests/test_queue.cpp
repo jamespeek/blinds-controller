@@ -1,6 +1,6 @@
 #include <cassert>
 
-#include "../firmware/queue.h"
+#include "../src/queue.h"
 
 static Cmd command(Zone zone, uint8_t blind, Action action, int target = -1) {
   return Cmd{zone, blind, action, target};
