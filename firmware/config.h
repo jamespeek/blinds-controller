@@ -33,6 +33,7 @@ constexpr size_t countOf(const T (&)[N]) {
 static constexpr size_t ZONE_COUNT = countOf(ZONE_CONFIGS);
 static constexpr size_t CONTROLLER_COUNT = countOf(CONTROLLER_CONFIGS);
 static_assert(ZONE_COUNT > 0, "At least one zone must be configured");
+static_assert(CONTROLLER_COUNT > 0, "At least one controller must be configured");
 
 /* ========= Debug ========= */
 static const bool DEBUG_LOG = false;

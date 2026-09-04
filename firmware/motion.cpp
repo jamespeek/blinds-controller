@@ -17,7 +17,7 @@ static inline void logLine(const String& s) { if (DEBUG_LOG) Serial.println(s); 
 const ZoneConfig* zoneConfig(Zone z) {
   if (z >= ZONE_COUNT) return nullptr;
   const ZoneConfig* config = &ZONE_CONFIGS[z];
-  if (!config->name || config->blindCount == 0 || config->blindCount > MAX_BLINDS_PER_ZONE) return nullptr;
+  if (!config->name || config->name[0] == '\0' || config->blindCount == 0 || config->blindCount > MAX_BLINDS_PER_ZONE) return nullptr;
   return config;
 }
 
@@ -63,10 +63,66 @@ bool ownsZone(Zone z) {
   return false;
 }
 
+static bool invalidTopology(const String& reason) {
+  Serial.println(String("[CONFIG] Invalid topology: ") + reason);
+  return false;
+}
+
+static bool validateTopology() {
+  bool claimed[ZONE_COUNT] = {};
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* zone = zoneConfig(z);
+    if (!zone) return invalidTopology(String("invalid zone at index ") + String(z));
+    for (Zone earlier = 0; earlier < z; earlier++) {
+      const ZoneConfig* other = zoneConfig(earlier);
+      if (other && strcmp(zone->name, other->name) == 0) {
+        return invalidTopology(String("duplicate zone name: ") + zone->name);
+      }
+    }
+    for (uint8_t blind = 0; blind < zone->blindCount; blind++) {
+      if (zone->travel[blind].open_s == 0 || zone->travel[blind].close_s == 0) {
+        return invalidTopology(String("zero travel time for ") + zone->name + " blind " + String(blind + 1));
+      }
+    }
+  }
+
+  for (size_t i = 0; i < CONTROLLER_COUNT; i++) {
+    const ControllerConfig& controller = CONTROLLER_CONFIGS[i];
+    if (!controller.mac || controller.mac[0] == '\0' || !controller.name || controller.name[0] == '\0') {
+      return invalidTopology(String("controller ") + String(i) + " needs a MAC and name");
+    }
+    if (!controller.zoneNames || controller.zoneCount == 0) {
+      return invalidTopology(String("controller ") + controller.name + " owns no zones");
+    }
+    for (size_t earlier = 0; earlier < i; earlier++) {
+      const char* earlierMac = CONTROLLER_CONFIGS[earlier].mac;
+      if (earlierMac && String(controller.mac).equalsIgnoreCase(earlierMac)) {
+        return invalidTopology(String("duplicate controller MAC: ") + controller.mac);
+      }
+    }
+    for (uint8_t n = 0; n < controller.zoneCount; n++) {
+      const char* name = controller.zoneNames[n];
+      if (!name || name[0] == '\0') return invalidTopology(String("empty zone for controller ") + controller.name);
+      Zone z = zoneFromName(name);
+      if (z == Z_UNKNOWN) return invalidTopology(String("unknown zone ") + name + " for controller " + controller.name);
+      if (claimed[z]) return invalidTopology(String("zone owned more than once: ") + name);
+      claimed[z] = true;
+    }
+  }
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    if (!claimed[z]) return invalidTopology(String("zone has no controller: ") + zoneConfig(z)->name);
+  }
+  return true;
+}
+
 void motionInit() {
+  activeController = nullptr;
+  if (!validateTopology()) {
+    Serial.println("[CONFIG] RF commands disabled until topology is corrected");
+    return;
+  }
   for (Zone z = 0; z < ZONE_COUNT; z++) {
     const ZoneConfig* config = zoneConfig(z);
-    if (!config) { Serial.printf("[CONFIG] Invalid zone at index %u\n", z); continue; }
     for (uint8_t blind = 0; blind < MAX_BLINDS_PER_ZONE; blind++) {
       travel[z][blind] = { config->travel[blind].open_s, config->travel[blind].close_s };
     }
