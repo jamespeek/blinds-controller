@@ -6,6 +6,7 @@
 #include "rf24_tx.h"
 #include "mqtt_io.h"
 #include "post_stop_guard.h"
+#include "rf_command_gate.h"
 
 static TravelTime travel[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
 static BlindRuntime runtime[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
@@ -159,7 +160,7 @@ static void rfSendSpaced(const ZoneConfig& config, uint8_t mask, bool open, RfPr
 
 void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
   const ZoneConfig* config = zoneConfig(z);
-  if (!config || !ownsZone(z)) return;
+  if (!config || !canTransmitCommand(rfOk(), ownsZone(z))) return;
   uint8_t mask = blindToMask(blind);
   BlindRuntime* rt = getRt(z, blind);
   TravelTime* tt = getTravel(z, blind);

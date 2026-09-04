@@ -4,6 +4,7 @@
 #include "motion.h"
 #include "queue.h"
 #include "command_validation.h"
+#include "rf24_tx.h"
 
 static inline void logLine(const String& s) {
   if (DEBUG_LOG) Serial.println(s);
@@ -30,7 +31,11 @@ static void handleRoot(WebServer& server) {
   msg += "Controller: ";
   msg += controllerName();
   msg += "\n";
-  if (controllerConfigured()) {
+  if (!controllerConfigured()) {
+    msg += "RF commands disabled: MAC is not configured\n";
+  } else if (!rfOk()) {
+    msg += "RF commands disabled: transmitter is unavailable\n";
+  } else {
     msg += "Owned zones: ";
     bool first = true;
     for (Zone z = 0; z < ZONE_COUNT; z++) {
@@ -42,8 +47,6 @@ static void handleRoot(WebServer& server) {
       }
     }
     msg += "\n";
-  } else {
-    msg += "RF commands disabled: MAC is not configured\n";
   }
 
   msg += "\nCommand format: /<zone>/<blind>/<cmd-or-pos>\n";
@@ -78,6 +81,10 @@ static void handleApi(WebServer& server) {
   }
   if (!ownsZone(z)) {
     server.send(403, "text/plain", "zone not owned by this controller");
+    return;
+  }
+  if (!rfOk()) {
+    server.send(503, "text/plain", "RF transmitter unavailable");
     return;
   }
   Cmd c;

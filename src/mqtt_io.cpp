@@ -4,6 +4,7 @@
 #include "queue.h"
 #include "motion.h"
 #include "command_validation.h"
+#include "rf24_tx.h"
 
 static PubSubClient* mqtt = nullptr;
 static String devId;
@@ -97,6 +98,10 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
   const ZoneConfig* config = zoneConfig(z);
   if (!config || blind < 1 || blind > config->blindCount) return;
   if (!ownsZone(z)) return;
+  if (!rfOk()) {
+    logLine("[MQTT] Ignoring command: RF transmitter unavailable");
+    return;
+  }
 
   int targetPos = -1;
   Action a;
