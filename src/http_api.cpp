@@ -65,11 +65,11 @@ static void handleApi(WebServer& server) {
   String cmdStr = uri.substring(p2 + 1);
 
   Zone z = parseZoneName(zoneStr);
-  if (!isUnsignedDecimal(blindStr.c_str(), blindStr.length())) {
+  int blind = 0;
+  if (!parseUnsignedDecimal(blindStr.c_str(), blindStr.length(), blind)) {
     server.send(404, "text/plain", "invalid zone or blind");
     return;
   }
-  int blind = blindStr.toInt();
 
   const ZoneConfig* config = zoneConfig(z);
   if (!config || blind < 1 || blind > config->blindCount) {
@@ -85,17 +85,17 @@ static void handleApi(WebServer& server) {
   c.blind = (uint8_t)blind;
   c.targetPos = -1;
 
-  bool isNum = isUnsignedDecimal(cmdStr.c_str(), cmdStr.length());
+  int position = 0;
+  bool isNum = parseUnsignedDecimal(cmdStr.c_str(), cmdStr.length(), position);
 
   if (isNum) {
-    int v = cmdStr.toInt();
-    if (v < 0 || v > 100) {
+    if (position > 100) {
       server.send(400, "text/plain", "position must be 0..100");
       return;
     }
     c.action = A_SET_POS;
-    c.targetPos = v;
-    logLine("[HTTP] RX " + uri + " -> SET_POS " + String(v));
+    c.targetPos = position;
+    logLine("[HTTP] RX " + uri + " -> SET_POS " + String(position));
   } else {
     if (!parseHttpAction(cmdStr, c.action)) {
       server.send(400, "text/plain", "command must be up, down, stop, or a position from 0 to 100");

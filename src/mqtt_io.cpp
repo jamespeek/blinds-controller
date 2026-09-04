@@ -38,7 +38,7 @@ void mqttPublishState(Zone z, uint8_t blind, MoveState s, int pos) {
   mqtt->publish(topicPos(z, blind).c_str(), buf, false);
 }
 
-static Zone parseZoneFromTopic(const String& t, uint8_t& blind) {
+static Zone parseZoneFromTopic(const String& t, int& blind) {
   // blinds/<zone>/<blind>/set
   String prefix = String(MQTT_BASE) + "/";
   if (!t.startsWith(prefix)) return Z_UNKNOWN;
@@ -55,8 +55,7 @@ static Zone parseZoneFromTopic(const String& t, uint8_t& blind) {
 
   if (leaf != "set") return Z_UNKNOWN;
 
-  if (!isUnsignedDecimal(blindStr.c_str(), blindStr.length())) return Z_UNKNOWN;
-  blind = (uint8_t)blindStr.toInt();
+  if (!parseUnsignedDecimal(blindStr.c_str(), blindStr.length(), blind)) return Z_UNKNOWN;
 
   return zoneFromName(zone);
 }
@@ -67,8 +66,8 @@ static bool parseAction(const String& payload, Action& actionOut, int& targetPos
   if (payload == "CLOSE") { actionOut = A_CLOSE; return true; }
   if (payload == "STOP") { actionOut = A_STOP; return true; }
 
-  if (isUnsignedDecimal(payload.c_str(), payload.length())) {
-    int v = payload.toInt();
+  int v = 0;
+  if (parseUnsignedDecimal(payload.c_str(), payload.length(), v)) {
     if (v >= 0 && v <= 100) { targetPosOut = v; actionOut = A_SET_POS; return true; }
   }
   return false;
@@ -93,7 +92,7 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
     return;
   }
 
-  uint8_t blind = 0;
+  int blind = 0;
   Zone z = parseZoneFromTopic(topic, blind);
   const ZoneConfig* config = zoneConfig(z);
   if (!config || blind < 1 || blind > config->blindCount) return;
@@ -106,7 +105,7 @@ static void callback(char* topicC, byte* payloadB, unsigned int len) {
     return;
   }
 
-  Cmd c{z, blind, a, targetPos};
+  Cmd c{z, (uint8_t)blind, a, targetPos};
   if (!qEnqueue(c)) logLine("[MQTT] Queue FULL - dropped");
 }
 
