@@ -24,24 +24,23 @@ static bool parseHttpAction(const String& s, Action& action) {
 
 static void handleRoot(WebServer& server) {
   String msg;
-  msg += "Blind controller online\n\n";
-
-  msg += "IP: " + WiFi.localIP().toString() + "\n";
-  msg += "MAC: " + WiFi.macAddress() + "\n\n";
-  msg += "Firmware: " + String(FIRMWARE_VERSION) + "\n\n";
-
   msg += "Controller: ";
   msg += controllerName();
   msg += "\n";
+  msg += "IP: " + WiFi.localIP().toString() + "\n";
+  msg += "MAC: " + WiFi.macAddress() + "\n\n";
+  msg += "Firmware: " + String(FIRMWARE_VERSION) + "\n\n";
+  const ZoneConfig* firstOwnedZone = nullptr;
   if (!controllerConfigured()) {
     msg += "RF commands disabled: MAC is not configured\n";
   } else if (!rfOk()) {
     msg += "RF commands disabled: transmitter is unavailable\n";
   } else {
-    msg += "Owned zones:\n";
+    msg += "Zones:\n";
     for (Zone z = 0; z < ZONE_COUNT; z++) {
       const ZoneConfig* config = zoneConfig(z);
       if (config && ownsZone(z)) {
+        if (!firstOwnedZone) firstOwnedZone = config;
         msg += "- ";
         msg += config->name;
         msg += " (blinds 1-";
@@ -53,8 +52,15 @@ static void handleRoot(WebServer& server) {
 
   msg += "\nCommand format: /<zone>/<blind>/<command-or-position>\n";
   msg += "Commands: open, close, or stop. Position: whole number from 0 to 100.\n";
-  msg += "Examples: http://<controller-ip>/<zone>/1/open\n";
-  msg += "          http://<controller-ip>/<zone>/1/50\n";
+  msg += "\nExamples:\n";
+  if (firstOwnedZone) {
+    const String base = "http://" + WiFi.localIP().toString() + "/" + firstOwnedZone->name + "/1/";
+    msg += base + "open\n";
+    msg += base + "50\n";
+  } else {
+    msg += "http://<controller-ip>/<zone>/1/open\n";
+    msg += "http://<controller-ip>/<zone>/1/50\n";
+  }
 
   server.send(200, "text/plain", msg);
 }
