@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include "config.h"
+#include "firmware_info.h"
 #include "http_api.h"
 #include "motion.h"
 #include "queue.h"
@@ -27,6 +28,7 @@ static void handleRoot(WebServer& server) {
 
   msg += "IP: " + WiFi.localIP().toString() + "\n";
   msg += "MAC: " + WiFi.macAddress() + "\n\n";
+  msg += "Firmware: " + String(FIRMWARE_VERSION) + "\n\n";
 
   msg += "Controller: ";
   msg += controllerName();
@@ -36,20 +38,23 @@ static void handleRoot(WebServer& server) {
   } else if (!rfOk()) {
     msg += "RF commands disabled: transmitter is unavailable\n";
   } else {
-    msg += "Owned zones: ";
-    bool first = true;
+    msg += "Owned zones:\n";
     for (Zone z = 0; z < ZONE_COUNT; z++) {
       const ZoneConfig* config = zoneConfig(z);
       if (config && ownsZone(z)) {
-        if (!first) msg += ", ";
+        msg += "- ";
         msg += config->name;
-        first = false;
+        msg += " (blinds 1-";
+        msg += config->blindCount;
+        msg += ")\n";
       }
     }
-    msg += "\n";
   }
 
-  msg += "\nCommand format: /<zone>/<blind>/<cmd-or-pos>\n";
+  msg += "\nCommand format: /<zone>/<blind>/<command-or-position>\n";
+  msg += "Commands: open, close, or stop. Position: whole number from 0 to 100.\n";
+  msg += "Examples: http://<controller-ip>/<zone>/1/open\n";
+  msg += "          http://<controller-ip>/<zone>/1/50\n";
 
   server.send(200, "text/plain", msg);
 }

@@ -3,6 +3,7 @@
 #include <PubSubClient.h>
 
 #include "config.h"
+#include "firmware_info.h"
 #include "types.h"
 #include "queue.h"
 #include "rf24_tx.h"
@@ -74,6 +75,8 @@ void setup() {
   Serial.println("========================================");
   Serial.print("Reset reason: ");
   Serial.println((int)esp_reset_reason());
+  Serial.print("Firmware: ");
+  Serial.println(FIRMWARE_VERSION);
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);

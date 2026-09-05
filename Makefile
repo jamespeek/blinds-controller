@@ -8,6 +8,11 @@ CAPTURE_CHANNEL ?= 52
 ESP32_CORE_VERSION := 3.3.7
 RF24_VERSION := 1.4.11
 PUBSUBCLIENT_VERSION := 2.8.0
+RELEASE_VERSION := $(strip $(shell tr -d '\n' < VERSION))
+GIT_COMMIT := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+GIT_DIRTY := $(shell test -z "$$(git status --porcelain 2>/dev/null)" || echo -dirty)
+FIRMWARE_VERSION ?= $(RELEASE_VERSION)+$(GIT_COMMIT)$(GIT_DIRTY)
+FIRMWARE_VERSION_FLAG := -DFIRMWARE_VERSION=\"$(FIRMWARE_VERSION)\"
 
 .PHONY: setup build build-dry-run capture-build channel-capture-build flash flash-dry-run capture-flash channel-capture-flash monitor boards test
 
@@ -20,11 +25,11 @@ setup:
 
 build:
 	@test -f $(SKETCH)/config.local.h || { echo "Missing config.local.h. Copy config.local.example.h and fill it in."; exit 1; }
-	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-path $(BUILD_DIR) $(SKETCH)
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-property compiler.cpp.extra_flags=$(FIRMWARE_VERSION_FLAG) --build-path $(BUILD_DIR) $(SKETCH)
 
 build-dry-run:
 	@test -f $(SKETCH)/config.local.h || { echo "Missing config.local.h. Copy config.local.example.h and fill it in."; exit 1; }
-	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-property compiler.cpp.extra_flags=-DRF_DRY_RUN=1 --build-path $(BUILD_DIR)-dry-run $(SKETCH)
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-property compiler.cpp.extra_flags="-DRF_DRY_RUN=1 $(FIRMWARE_VERSION_FLAG)" --build-path $(BUILD_DIR)-dry-run $(SKETCH)
 
 capture-build:
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-path $(BUILD_DIR)-capture tools/rf_capture
