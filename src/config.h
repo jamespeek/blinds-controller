@@ -74,8 +74,11 @@ static const int RF_CH_SETTLE_US = 200;  // delay after setChannel()
 // release phase. These measured values are used for both movement and stopping.
 static const uint16_t RF_START_ACTIVE_MS = 350;
 static const uint16_t RF_START_RELEASE_MS = 300;
-static const uint16_t RF_STOP_ACTIVE_MS = 250;
-static const uint16_t RF_STOP_RELEASE_MS = 300;
+// A remote stop is a brief opposite-direction press followed by a longer
+// release frame. Keeping the active phase short prevents it being treated as
+// a new movement command after the blind has already stopped.
+static const uint16_t RF_STOP_ACTIVE_MS = 190;
+static const uint16_t RF_STOP_RELEASE_MS = 400;
 static const uint8_t RF_START_GESTURE_COUNT = 2;
 static const uint16_t RF_START_GESTURE_GAP_MS = 100;
 
