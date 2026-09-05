@@ -4,11 +4,12 @@ SKETCH := $(CURDIR)/src
 FQBN := esp32:esp32:esp32s2:CDCOnBoot=cdc,UploadMode=cdc
 PORT ?= /dev/cu.usbmodem01
 BUILD_DIR := $(CURDIR)/.arduino-build
+CAPTURE_CHANNEL ?= 52
 ESP32_CORE_VERSION := 3.3.7
 RF24_VERSION := 1.4.11
 PUBSUBCLIENT_VERSION := 2.8.0
 
-.PHONY: setup build build-dry-run flash flash-dry-run monitor boards test
+.PHONY: setup build build-dry-run capture-build channel-capture-build flash flash-dry-run capture-flash channel-capture-flash monitor boards test
 
 setup:
 	@command -v $(ARDUINO_CLI) >/dev/null || { echo "Arduino CLI is required. Install it with: brew install arduino-cli"; exit 1; }
@@ -25,6 +26,18 @@ build-dry-run:
 	@test -f $(SKETCH)/config.local.h || { echo "Missing config.local.h. Copy config.local.example.h and fill it in."; exit 1; }
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-property compiler.cpp.extra_flags=-DRF_DRY_RUN=1 --build-path $(BUILD_DIR)-dry-run $(SKETCH)
 
+capture-build:
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-path $(BUILD_DIR)-capture tools/rf_capture
+
+capture-flash: capture-build
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) upload --fqbn $(FQBN) --port $(PORT) --build-path $(BUILD_DIR)-capture tools/rf_capture
+
+channel-capture-build:
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) compile --clean --fqbn $(FQBN) --build-property compiler.cpp.extra_flags=-DCAPTURE_CHANNEL=$(CAPTURE_CHANNEL) --build-path $(BUILD_DIR)-channel-capture-$(CAPTURE_CHANNEL) tools/rf_channel_capture
+
+channel-capture-flash: channel-capture-build
+	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) upload --fqbn $(FQBN) --port $(PORT) --build-path $(BUILD_DIR)-channel-capture-$(CAPTURE_CHANNEL) tools/rf_channel_capture
+
 flash: build
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) upload --fqbn $(FQBN) --port $(PORT) --build-path $(BUILD_DIR) $(SKETCH)
 
@@ -34,6 +47,12 @@ flash-dry-run: build-dry-run
 test:
 	c++ -std=c++17 -Wall -Wextra -Werror tests/test_rf_profiles.cpp -o /tmp/blinds-rf-profile-tests
 	/tmp/blinds-rf-profile-tests
+	c++ -std=c++17 -Wall -Wextra -Werror tests/test_rf_gesture.cpp -o /tmp/blinds-rf-gesture-tests
+	/tmp/blinds-rf-gesture-tests
+	c++ -std=c++17 -Wall -Wextra -Werror tests/test_rf_remote_frame.cpp -o /tmp/blinds-rf-remote-frame-tests
+	/tmp/blinds-rf-remote-frame-tests
+	c++ -std=c++17 -Wall -Wextra -Werror tests/test_remote_motion.cpp -o /tmp/blinds-remote-motion-tests
+	/tmp/blinds-remote-motion-tests
 	c++ -std=c++17 -Wall -Wextra -Werror -Itests/fakes tests/test_queue.cpp src/queue.cpp -o /tmp/blinds-queue-tests
 	/tmp/blinds-queue-tests
 	c++ -std=c++17 -Wall -Wextra -Werror tests/test_command_validation.cpp -o /tmp/blinds-command-validation-tests

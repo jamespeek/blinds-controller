@@ -24,14 +24,28 @@
   radio writes disabled. Use these for safe device-path checks.
 - `make monitor` opens the serial console; close it before flashing.
 - `make boards` lists serial devices.
+- `make capture-build` / `make capture-flash` build or install the passive RF
+  capture sketch. It has no RF write calls and auto-acknowledgements are
+  disabled. Capture firmware replaces normal control temporarily; restore it
+  afterwards with `make flash`.
+- `CAPTURE_CHANNEL=52 make channel-capture-flash` installs a passive receiver
+  locked to one RF channel and reports packet-train timing. Repeat it for 52,
+  71, and 33 to measure the physical remote's per-channel dwell. Restore normal
+  firmware afterwards with `make flash`.
 
 Always run `make test`, `make build`, and `make build-dry-run` after firmware
 changes. Do not flash a normal build unless the user has authorized live RF.
 
 ## RF and motion behaviour
 
-- A start gesture sends two redundant RF profiles. A STOP is deliberately one
-  complete channel hop, not a long opposite-direction stream.
+- Every direction gesture mirrors the physical remote: an active UP/DOWN phase
+  followed by its matching release phase, with one packet rapidly sent on each
+  channel per hop cycle. Starts repeat the complete same-direction gesture for
+  reception redundancy; STOP uses one gesture only. Queue coalescing and
+  post-stop suppression guard against a delayed follow-on reversal.
+- When the radio is not transmitting, it scans the three channels in receive
+  mode. Active remote UP/DOWN frames for owned zones update the estimated motion
+  state without RF transmission; release and duplicate frames are ignored.
 - The command queue coalesces pending work per blind. Motion also suppresses a
   duplicate opposite-direction command for a short post-stop window.
 - The runtime position is estimated from configured travel times; there is no

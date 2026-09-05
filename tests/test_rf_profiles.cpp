@@ -3,10 +3,12 @@
 #include "../src/rf_profiles.h"
 
 int main() {
-  constexpr RfProfilePlan start = rfProfilePlan(RfProfile::Start, 700, 1);
-  static_assert(start.durationMs == 700 && start.maxCycles == 0);
-  constexpr RfProfilePlan stop = rfProfilePlan(RfProfile::Stop, 700, 1);
-  static_assert(stop.durationMs == 0 && stop.maxCycles == 1);
+  constexpr RfProfilePlan start = rfProfilePlan(RfProfile::Start, 350, 300, 250, 300);
+  static_assert(start.activeDurationMs == 350 && start.releaseDurationMs == 300);
+  constexpr RfProfilePlan stop = rfProfilePlan(RfProfile::Stop, 350, 300, 250, 300);
+  static_assert(stop.activeDurationMs == 250 && stop.releaseDurationMs == 300);
+  static_assert(rfGestureCount(RfProfile::Start, 2) == 2);
+  static_assert(rfGestureCount(RfProfile::Stop, 2) == 1);
   assert(std::string(rfProfileName(RfProfile::Start)) == "start");
   assert(std::string(rfProfileName(RfProfile::Stop)) == "stop");
 }

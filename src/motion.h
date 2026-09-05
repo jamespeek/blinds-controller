@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include "rf_remote_frame.h"
 
 struct ZoneConfig;
 
@@ -16,3 +17,4 @@ void tickAllMovement();
 uint8_t blindToMask(uint8_t blind);
 
 void motionPublishAllStates();
+void motionObserveRemoteFrame(const RemoteRfFrame& frame);

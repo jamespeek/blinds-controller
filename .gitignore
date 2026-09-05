@@ -6,3 +6,5 @@ src/config.local.h
 # Arduino CLI output.
 .arduino-build/
 .arduino-build-dry-run/
+.arduino-build-capture/
+.arduino-build-channel-capture-*/

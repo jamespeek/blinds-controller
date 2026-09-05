@@ -6,3 +6,4 @@
 void rfInit();
 bool rfOk();
 void rfSendCmd(const uint8_t remoteId[2], uint8_t blindMask, bool open, RfProfile profile);
+bool rfReceivePacket(uint8_t packet[5]);

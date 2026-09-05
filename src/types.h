@@ -31,4 +31,6 @@ struct BlindRuntime {
   Action postStopAction;
   int postStopTargetPos;
   uint32_t postStopUntilMs;
+  Action lastObservedAction;
+  uint32_t lastObservedMs;
 };

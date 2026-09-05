@@ -147,15 +147,33 @@ normal `make flash` build.
 start/stop profile self-test after boot, so it is appropriate for bench and
 serial-log verification.
 
+`make capture-build` compiles a separate passive receiver for comparing the
+physical remote's packets with the controller's RF profile. `make
+capture-flash` installs it temporarily; it has no RF write path and disables
+radio acknowledgements. With `make monitor` open, press each remote button and
+record the packet log. Restore normal blind control afterwards with `make
+flash`.
+
 ## RF reliability tuning
 
 RF timing is still being tuned for reliable reception across the installation.
-Movement starts currently use two redundant send profiles, while STOP uses one
-short channel-hop gesture to avoid a repeated opposite-direction command being
-interpreted as a new movement. The resend count, timing, and train parameters
-are grouped in `src/config.h`. Test any adjustment with `make flash-dry-run`
-first, then make a small observed live-RF change rather than increasing every
-retry at once.
+Each movement and stop command reproduces the physical remote: an active UP or
+DOWN packet followed by its matching release packet, rapidly round-robinning
+across the three RF channels. Movement starts repeat that complete gesture once
+for reception redundancy; STOP uses one shorter gesture only. Queue coalescing
+and duplicate-command suppression prevent a delayed follow-on command from
+reversing a completed stop. The timing and hop parameters are grouped in
+`src/config.h`. Test any adjustment with `make flash-dry-run` first, then make
+a small observed live-RF change rather than increasing every retry at once.
+
+## Handheld remote state tracking
+
+When the radio is idle, the controller passively cycles through the three RF
+channels and listens for the paired handheld remote. It recognises active UP
+and DOWN packets for zones owned by that controller, then updates the
+optimistic Home Assistant motion estimate without transmitting RF. Repeated
+packets and release packets are ignored. This is still an estimate rather than
+physical position feedback, and a very short remote press can be missed.
 
 ## Connectivity recovery
 

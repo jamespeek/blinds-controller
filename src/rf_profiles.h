@@ -2,24 +2,27 @@
 
 #include <stdint.h>
 
-// A profile describes one RF transmission gesture. Starting movement needs
-// broad redundancy; stopping must be deliberately short so repeated packets
-// cannot become a second, opposite-direction press at the blind receiver.
+// A profile describes one bounded RF transmission gesture.
 enum class RfProfile : uint8_t {
   Start,
   Stop,
 };
 
 struct RfProfilePlan {
-  uint16_t durationMs;
-  uint8_t maxCycles;
+  uint16_t activeDurationMs;
+  uint16_t releaseDurationMs;
 };
 
-constexpr RfProfilePlan rfProfilePlan(RfProfile profile, uint16_t startDurationMs,
-                                      uint8_t stopCycles) {
+constexpr RfProfilePlan rfProfilePlan(RfProfile profile, uint16_t startActiveDurationMs,
+                                      uint16_t startReleaseDurationMs, uint16_t stopActiveDurationMs,
+                                      uint16_t stopReleaseDurationMs) {
   return profile == RfProfile::Start
-      ? RfProfilePlan{startDurationMs, 0}
-      : RfProfilePlan{0, stopCycles};
+      ? RfProfilePlan{startActiveDurationMs, startReleaseDurationMs}
+      : RfProfilePlan{stopActiveDurationMs, stopReleaseDurationMs};
+}
+
+constexpr uint8_t rfGestureCount(RfProfile profile, uint8_t startGestureCount) {
+  return profile == RfProfile::Start ? startGestureCount : 1;
 }
 
 constexpr const char* rfProfileName(RfProfile profile) {

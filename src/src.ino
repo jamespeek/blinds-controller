@@ -6,6 +6,7 @@
 #include "types.h"
 #include "queue.h"
 #include "rf24_tx.h"
+#include "rf_remote_frame.h"
 #include "motion.h"
 #include "mqtt_io.h"
 #include "http_api.h"
@@ -140,6 +141,14 @@ void loop() {
   mqttLoopEnsure();
 
   tickAllMovement();
+
+  // When idle, the shared RF24 returns to receive mode and observes handheld
+  // remote commands without transmitting anything.
+  uint8_t remotePacket[5];
+  if (rfReceivePacket(remotePacket)) {
+    RemoteRfFrame frame = {};
+    if (decodeRemoteRfFrame(remotePacket, frame)) motionObserveRemoteFrame(frame);
+  }
 
   // Drain one command per loop (RF send itself is still blocking but spaced internally)
   Cmd c;

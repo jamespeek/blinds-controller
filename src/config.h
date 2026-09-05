@@ -63,25 +63,21 @@ static const int RF_CHANNEL_2 = 71;
 // TX shaping (matches working remote-frame beacon)
 // Hop order observed: 52 -> 71 -> 33 (i.e. CH1 -> CH2 -> CH0)
 static const uint8_t RF_HOP_ORDER[3] = { RF_CHANNEL_1, RF_CHANNEL_2, RF_CHANNEL_0 };
+static const uint16_t RF_LISTEN_CHANNEL_DWELL_MS = 3;
+static const uint16_t RF_REMOTE_DEDUP_MS = 600;
 
-// Packets per channel "train" (dwell)
-static const int RF_TRAIN_PACKETS_0 = 25;  // on RF_HOP_ORDER[0]
-static const int RF_TRAIN_PACKETS_1 = 10;  // on RF_HOP_ORDER[1]
-static const int RF_TRAIN_PACKETS_2 = 25;  // on RF_HOP_ORDER[2]
+// The physical remote sends one packet on each channel in rapid succession,
+// then immediately repeats the round-robin sequence.
+static const int RF_CH_SETTLE_US = 200;  // delay after setChannel()
 
-// Timing within a train
-static const int RF_TRAIN_DELAY_US = 350;  // delay between packets in a train
-static const int RF_CH_SETTLE_US = 200;    // delay after setChannel()
-
-static const int RF_SEND_GAP_MS = 20;
-
-// Motion-start gestures are intentionally redundant for reception reliability.
-// A stop must be a single complete channel hop, otherwise a receiver may see
-// repeated opposite-direction frames as a new movement request.
-static const uint16_t RF_START_DURATION_MS = 700;
-static const uint8_t RF_START_REPEAT_COUNT = 2;
-static const uint16_t RF_START_REPEAT_GAP_MS = 200;
-static const uint8_t RF_STOP_CYCLES = 1;
+// A physical remote press has an active direction phase followed by a matching
+// release phase. These measured values are used for both movement and stopping.
+static const uint16_t RF_START_ACTIVE_MS = 350;
+static const uint16_t RF_START_RELEASE_MS = 300;
+static const uint16_t RF_STOP_ACTIVE_MS = 250;
+static const uint16_t RF_STOP_RELEASE_MS = 300;
+static const uint8_t RF_START_GESTURE_COUNT = 2;
+static const uint16_t RF_START_GESTURE_GAP_MS = 100;
 
 // A command that stopped opposite movement is ignored briefly if it is
 // repeated, preventing an HTTP/MQTT retry from immediately reversing motion.

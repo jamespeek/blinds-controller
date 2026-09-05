@@ -7,6 +7,7 @@
 #include "mqtt_io.h"
 #include "post_stop_guard.h"
 #include "rf_command_gate.h"
+#include "remote_motion.h"
 
 static TravelTime travel[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
 static BlindRuntime runtime[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
@@ -40,6 +41,7 @@ static void initRuntime(BlindRuntime* items) {
     items[i].moveStartMs = 0; items[i].moveDurationMs = 0; items[i].moving = false;
     items[i].partialMove = false; items[i].openingDir = false; items[i].lastPubMs = 0;
     items[i].postStopAction = A_STOP; items[i].postStopTargetPos = -1; items[i].postStopUntilMs = 0;
+    items[i].lastObservedAction = A_STOP; items[i].lastObservedMs = 0;
   }
 }
 
@@ -144,18 +146,78 @@ void motionInit() {
 
 static void publishState(Zone z, uint8_t blind, MoveState state, int pos) { mqttPublishState(z, blind, state, pos); }
 
+static void updateEstimatedPosition(BlindRuntime& rt, uint32_t now) {
+  const uint32_t elapsed = now - rt.moveStartMs;
+  const float fraction = rt.moveDurationMs ? (float)elapsed / rt.moveDurationMs : 0.0f;
+  rt.position = constrain(rt.startPos + (int)((rt.targetPos - rt.startPos) * constrain(fraction, 0.0f, 1.0f)), 0, 100);
+}
+
+static void observeRemoteDirection(Zone z, uint8_t blind, bool opening) {
+  const ZoneConfig* config = zoneConfig(z);
+  BlindRuntime* rt = getRt(z, blind);
+  TravelTime* tt = getTravel(z, blind);
+  if (!config || !rt || !tt) return;
+
+  const uint32_t now = millis();
+  const Action action = opening ? A_OPEN : A_CLOSE;
+  if (rt->lastObservedAction == action && now - rt->lastObservedMs < RF_REMOTE_DEDUP_MS) return;
+  rt->lastObservedAction = action;
+  rt->lastObservedMs = now;
+
+  const bool movingUp = rt->state == S_OPENING;
+  switch (remoteMotionEffect(rt->moving, movingUp, opening)) {
+    case RemoteMotionEffect::Continue:
+      return;
+    case RemoteMotionEffect::Stop:
+      updateEstimatedPosition(*rt, now);
+      rt->moving = false;
+      rt->partialMove = false;
+      rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN;
+      Serial.println(String("[RF RX] Remote STOP zone=") + config->name + " blind=" + blind + " pos=" + rt->position);
+      publishState(z, blind, rt->state, rt->position);
+      return;
+    case RemoteMotionEffect::Start:
+      break;
+  }
+
+  const int target = opening ? 100 : 0;
+  if (rt->position == target) return;
+  const uint32_t fullMs = (opening ? tt->open_s : tt->close_s) * 1000UL;
+  uint32_t durationMs = (fullMs * (uint32_t)abs(target - rt->position)) / 100UL;
+  if (durationMs < 300) durationMs = 300;
+  rt->moving = true;
+  rt->partialMove = false;
+  rt->openingDir = opening;
+  rt->state = opening ? S_OPENING : S_CLOSING;
+  rt->startPos = rt->position;
+  rt->targetPos = target;
+  rt->moveStartMs = now;
+  rt->moveDurationMs = durationMs;
+  Serial.println(String("[RF RX] Remote ") + (opening ? "OPEN" : "CLOSE") + " zone=" + config->name + " blind=" + blind);
+  publishState(z, blind, rt->state, rt->position);
+}
+
+void motionObserveRemoteFrame(const RemoteRfFrame& frame) {
+  for (Zone z = 0; z < ZONE_COUNT; z++) {
+    const ZoneConfig* config = zoneConfig(z);
+    if (!config || !ownsZone(z)) continue;
+    if (config->remoteId[0] != frame.remoteId[0] || config->remoteId[1] != frame.remoteId[1]) continue;
+    for (uint8_t blind = 1; blind <= config->blindCount; blind++) {
+      if ((frame.blindMask & blindToMask(blind)) == 0) continue;
+      observeRemoteDirection(z, blind, frame.direction == RemoteDirection::Up);
+    }
+  }
+}
+
 static void rfSendSpaced(const ZoneConfig& config, uint8_t mask, bool open, RfProfile profile) {
   uint32_t elapsed = millis() - lastRfStartMs;
   if (elapsed < RF_MIN_GAP_MS) delay(RF_MIN_GAP_MS - elapsed);
   lastRfStartMs = millis();
-  if (profile == RfProfile::Start) {
-    for (uint8_t i = 0; i < RF_START_REPEAT_COUNT; i++) {
-      rfSendCmd(config.remoteId, mask, open, profile);
-      if (i + 1 < RF_START_REPEAT_COUNT) delay(RF_START_REPEAT_GAP_MS);
-    }
-    return;
+  const uint8_t gestureCount = rfGestureCount(profile, RF_START_GESTURE_COUNT);
+  for (uint8_t i = 0; i < gestureCount; i++) {
+    rfSendCmd(config.remoteId, mask, open, profile);
+    if (i + 1 < gestureCount) delay(RF_START_GESTURE_GAP_MS);
   }
-  rfSendCmd(config.remoteId, mask, open, profile);
 }
 
 void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
