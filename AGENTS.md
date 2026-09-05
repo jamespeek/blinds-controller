@@ -70,3 +70,7 @@ changes. Do not flash a normal build unless the user has authorized live RF.
 - For reliability or control-path work, add a focused host test where practical
   and verify both normal and dry-run builds.
 - Use separate, descriptive commits for independent fixes.
+- `VERSION` holds the deliberate release number. Increase it only when making a
+  user-facing release; the Makefile automatically appends the exact Git commit
+  (and `-dirty` for uncommitted builds) to the firmware version shown at boot
+  and on the HTTP status page.

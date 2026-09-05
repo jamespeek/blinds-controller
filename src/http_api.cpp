@@ -50,8 +50,9 @@ static void handleRoot(WebServer& server) {
     }
   }
 
-  msg += "\nCommand format: /<zone>/<blind>/<command-or-position>\n";
-  msg += "Commands: open, close, or stop. Position: whole number from 0 to 100.\n";
+  msg += "\nCommand format: /<zone>/<blind>/<verb-or-position>\n";
+  msg += "Verbs: open, close, or stop\n";
+  msg += "Position: whole number from 0 to 100\n";
   msg += "\nExamples:\n";
   if (firstOwnedZone) {
     const String base = "http://" + WiFi.localIP().toString() + "/" + firstOwnedZone->name + "/1/";
