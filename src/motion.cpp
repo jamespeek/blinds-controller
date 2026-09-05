@@ -8,6 +8,7 @@
 #include "post_stop_guard.h"
 #include "rf_command_gate.h"
 #include "remote_motion.h"
+#include "stop_retry.h"
 
 static TravelTime travel[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
 static BlindRuntime runtime[ZONE_COUNT][MAX_BLINDS_PER_ZONE];
@@ -39,7 +40,7 @@ static void initRuntime(BlindRuntime* items) {
   for (uint8_t i = 0; i < MAX_BLINDS_PER_ZONE; i++) {
     items[i].state = S_OPEN; items[i].position = 50; items[i].startPos = 50; items[i].targetPos = 50;
     items[i].moveStartMs = 0; items[i].moveDurationMs = 0; items[i].moving = false;
-    items[i].partialMove = false; items[i].openingDir = false; items[i].lastPubMs = 0;
+    items[i].partialMove = false; items[i].openingDir = false; items[i].hasMotionDirection = false; items[i].lastPubMs = 0;
     items[i].postStopAction = A_STOP; items[i].postStopTargetPos = -1; items[i].postStopUntilMs = 0;
     items[i].lastObservedAction = A_STOP; items[i].lastObservedMs = 0;
   }
@@ -188,6 +189,7 @@ static void observeRemoteDirection(Zone z, uint8_t blind, bool opening) {
   rt->moving = true;
   rt->partialMove = false;
   rt->openingDir = opening;
+  rt->hasMotionDirection = true;
   rt->state = opening ? S_OPENING : S_CLOSING;
   rt->startPos = rt->position;
   rt->targetPos = target;
@@ -267,7 +269,7 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
       if (durMs < 300) durMs = 300;
       logLine(String("[MOVE] SET_POS zone=") + config->name + " blind=" + blind + " cur=" + cur + " tgt=" + target);
       rfSendSpaced(*config, mask, opening, RfProfile::Start);
-      rt->moving = true; rt->partialMove = true; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
+      rt->moving = true; rt->partialMove = true; rt->openingDir = opening; rt->hasMotionDirection = true; rt->state = opening ? S_OPENING : S_CLOSING;
       rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
       publishState(z, blind, rt->state, rt->position); return;
     }
@@ -281,21 +283,32 @@ void startMove(Zone z, uint8_t blind, Action action, int targetPos) {
     if (durMs < 300) durMs = 300;
     logLine(String("[MOVE] ") + (opening ? "OPEN" : "CLOSE") + " zone=" + config->name + " blind=" + blind);
     rfSendSpaced(*config, mask, opening, RfProfile::Start);
-    rt->moving = true; rt->partialMove = false; rt->openingDir = opening; rt->state = opening ? S_OPENING : S_CLOSING;
+    rt->moving = true; rt->partialMove = false; rt->openingDir = opening; rt->hasMotionDirection = true; rt->state = opening ? S_OPENING : S_CLOSING;
     rt->startPos = cur; rt->targetPos = target; rt->moveStartMs = now; rt->moveDurationMs = durMs;
     publishState(z, blind, rt->state, rt->position); return;
   }
 
-  if (action == A_STOP && rt->moving) {
-    uint32_t elapsed = now - rt->moveStartMs;
-    float frac = rt->moveDurationMs ? (float)elapsed / rt->moveDurationMs : 0.0f;
-    frac = constrain(frac, 0.0f, 1.0f);
-    rt->position = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
-    bool wasOpening = rt->state == S_OPENING;
-    logLine(String("[MOVE] STOP zone=") + config->name + " blind=" + blind + " pos=" + rt->position);
-    rfSendSpaced(*config, mask, !wasOpening, RfProfile::Stop);
-    rt->moving = false; rt->partialMove = false; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN;
-    publishState(z, blind, rt->state, rt->position);
+  if (action == A_STOP) {
+    const StopRfDirection direction = stopRfDirection(rt->moving, rt->state == S_OPENING,
+                                                       rt->hasMotionDirection, rt->openingDir);
+    if (!direction.shouldSend) {
+      logLine(String("[MOVE] Ignoring STOP without a known direction zone=") + config->name + " blind=" + blind);
+      return;
+    }
+    if (rt->moving) {
+      uint32_t elapsed = now - rt->moveStartMs;
+      float frac = rt->moveDurationMs ? (float)elapsed / rt->moveDurationMs : 0.0f;
+      frac = constrain(frac, 0.0f, 1.0f);
+      rt->position = constrain(rt->startPos + (int)((rt->targetPos - rt->startPos) * frac), 0, 100);
+      logLine(String("[MOVE] STOP zone=") + config->name + " blind=" + blind + " pos=" + rt->position);
+    } else {
+      logLine(String("[MOVE] Retrying STOP zone=") + config->name + " blind=" + blind);
+    }
+    rfSendSpaced(*config, mask, direction.opening, RfProfile::Stop);
+    if (rt->moving) {
+      rt->moving = false; rt->partialMove = false; rt->state = rt->position <= 0 ? S_CLOSED : S_OPEN;
+      publishState(z, blind, rt->state, rt->position);
+    }
   }
 }
 

@@ -26,6 +26,7 @@ struct BlindRuntime {
 
   bool partialMove;          // only for 15..85 setpos
   bool openingDir;           // direction used for stop burst
+  bool hasMotionDirection;   // a prior direction is available for STOP retry
 
   uint32_t lastPubMs;        // ✅ per-blind publish throttling (fix)
   Action postStopAction;

@@ -61,6 +61,8 @@ test:
 	/tmp/blinds-post-stop-guard-tests
 	c++ -std=c++17 -Wall -Wextra -Werror tests/test_rf_command_gate.cpp -o /tmp/blinds-rf-command-gate-tests
 	/tmp/blinds-rf-command-gate-tests
+	c++ -std=c++17 -Wall -Wextra -Werror tests/test_stop_retry.cpp -o /tmp/blinds-stop-retry-tests
+	/tmp/blinds-stop-retry-tests
 
 monitor:
 	$(ARDUINO_CLI) --config-file $(ARDUINO_CONFIG) monitor --port $(PORT) --config baudrate=115200
